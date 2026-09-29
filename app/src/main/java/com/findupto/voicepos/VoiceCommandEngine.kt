@@ -20,7 +20,7 @@ object VoiceCommandEngine {
         "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10
     )
 
-    fun parse(raw: String): List<VoiceCommand> {
+    fun parse(raw: String, menu: List<MenuItem> = emptyList()): List<VoiceCommand> {
         var s = raw.lowercase(Locale.US)
             .replace(" rupees ", " rs ")
             .replace(" rupee ", " rs ")
@@ -52,6 +52,20 @@ object VoiceCommandEngine {
             val price = match.groupValues[3].toDoubleOrNull() ?: 0.0
             if (qty > 0 && name.isNotBlank() && price > 0) {
                 out += VoiceCommand.Add(SaleItem(name, qty, price))
+            }
+        }
+
+
+        if (menu.isNotEmpty()) {
+            menu.sortedByDescending { it.name.length }.forEach { product ->
+                val escaped = Regex.escape(product.name.lowercase(Locale.US))
+                Regex("""(?:^|\\b)(\\d+)\\s+$escaped(?:\\s+each)?(?=$|\\b|,|;|\\band\\b|\\bthen\\b)""", RegexOption.IGNORE_CASE)
+                    .findAll(s).forEach { m ->
+                        val qty = m.groupValues[1].toIntOrNull() ?: 0
+                        if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
+                    }
+                if (Regex("""(?:^|\\b)add\\s+$escaped(?:\\s+each)?(?=$|\\b|,|;)""", RegexOption.IGNORE_CASE).containsMatchIn(s))
+                    out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
             }
         }
 
