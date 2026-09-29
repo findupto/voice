@@ -37,7 +37,10 @@ fun PosApp(
     heard: String,
     voiceStatus: String,
     clearHeard: () -> Unit,
-    listen: () -> Unit
+    listen: () -> Unit,
+    openSpeechSettings: () -> Unit,
+    exportMenu: () -> Unit,
+    importMenu: () -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var cart by remember { mutableStateOf(emptyList<SaleItem>()) }
@@ -49,6 +52,7 @@ fun PosApp(
     var expense by remember { mutableStateOf(false) }
     var opening by remember { mutableStateOf(!store.hasOpeningCash()) }
     var selectedSale by remember { mutableStateOf<Sale?>(null) }
+    val menu = remember(tick) { store.menu() }
 
     val profile = remember(tick) { store.profile() }
     val sales = remember(tick) { store.sales() }
@@ -57,7 +61,7 @@ fun PosApp(
 
     LaunchedEffect(heard) {
         if (heard.isNotBlank()) {
-            VoiceCommandEngine.parse(heard).forEach { command ->
+            VoiceCommandEngine.parse(heard, menu).forEach { command ->
                 when (command) {
                     is VoiceCommand.Add -> {
                         val index = cart.indexOfFirst { it.name.equals(command.item.name, true) && it.price == command.item.price }
@@ -124,8 +128,8 @@ fun PosApp(
         },
         bottomBar = {
             NavigationBar {
-                val names = listOf("Sale", "Kitchen", "Sales", "Expenses", "Analytics")
-                val icons = listOf(Icons.Default.PointOfSale, Icons.Default.Restaurant, Icons.Default.ReceiptLong, Icons.Default.Payments, Icons.Default.Insights)
+                val names = listOf("Sale", "Menu", "Kitchen", "Sales", "Expenses", "Analytics")
+                val icons = listOf(Icons.Default.PointOfSale, Icons.Default.MenuBook, Icons.Default.Restaurant, Icons.Default.ReceiptLong, Icons.Default.Payments, Icons.Default.Insights)
                 names.forEachIndexed { index, name ->
                     NavigationBarItem(tab == index, { tab = index }, icon = { Icon(icons[index], name) }, label = { Text(name) })
                 }
@@ -145,10 +149,12 @@ fun PosApp(
                 0 -> QuickSale(cart, voiceStatus, ::sendOrder, listen, { cart = emptyList() }) { item, delta ->
                     cart = cart.map { if (it == item) it.copy(qty = (it.qty + delta).coerceAtLeast(0)) else it }.filter { it.qty > 0 }
                 }
-                1 -> KitchenQueue(pending, profile, printer, ::pay) { editing = it }
-                2 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
-                3 -> ExpensesPage(expenses.filter { inRange(it.time, filter) }, filter, { filter = it }) { expense = true }
-                4 -> Analytics(sales.filter { inRange(it.time, filter) }, expenses.filter { inRange(it.time, filter) }, cash, filter, { filter = it })
+                1 -> MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu)
+                2 -> KitchenQueue(pending, profile, printer, ::pay) { editing = it }
+                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
+                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
+                4 -> ExpensesPage(expenses.filter { inRange(it.time, filter) }, filter, { filter = it }) { expense = true }
+                5 -> Analytics(sales.filter { inRange(it.time, filter) }, expenses.filter { inRange(it.time, filter) }, cash, filter, { filter = it })
             }
         }
     }
@@ -192,6 +198,9 @@ private fun QuickSale(
                     IconButton(onClick = listen) { Icon(Icons.Default.MicNone, "Listen") }
                 }
                 AssistChip(onClick = listen, label = { Text(voiceStatus) }, leadingIcon = { Icon(Icons.Default.WifiOff, null) })
+                if (voiceStatus.contains("error", true) || voiceStatus.contains("pack", true) || voiceStatus.contains("unavailable", true)) {
+                    OutlinedButton(onClick = openSpeechSettings, modifier = Modifier.fillMaxWidth()) { Text("Check / Download Speech Language Pack") }
+                }
                 Text("Try: 2 shawarma price 300 each and 1 fries price 150 each", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -232,6 +241,37 @@ private fun QuickSale(
     }
 }
 
+
+@Composable
+private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit) {
+    var adding by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { adding = true }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Add Product") }
+            OutlinedButton(onClick = exportMenu, modifier = Modifier.weight(1f)) { Text("Download CSV") }
+            OutlinedButton(onClick = importMenu, modifier = Modifier.weight(1f)) { Text("Upload CSV") }
+        }
+        Text("Tap a product to add it to the cart", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (menu.isEmpty()) EmptyState(Icons.Default.MenuBook, "No products", "Add products one by one or upload a CSV menu.")
+        LazyColumn { items(menu) { item ->
+            Card(Modifier.fillMaxWidth().clickable { refresh(); }) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text(money(item.price), style = MaterialTheme.typography.bodySmall) }
+                    IconButton(onClick = { store.removeMenuItem(item.id); refresh() }) { Icon(Icons.Default.Delete, "Delete") }
+                }
+            }
+        } }
+    }
+    if (adding) AddMenuDialog({ name, price -> store.addMenuItem(MenuItem(System.currentTimeMillis(), name.trim(), price)); adding = false; refresh() }) { adding = false }
+}
+
+@Composable
+private fun AddMenuDialog(save: (String, Double) -> Unit, close: () -> Unit) {
+    var name by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = close, title = { Text("Add Product") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(name, { name = it }, label = { Text("Product name") }); OutlinedTextField(price, { price = it }, label = { Text("Price") })
+    } }, confirmButton = { TextButton(onClick = { price.toDoubleOrNull()?.takeIf { it > 0 }?.let { if (name.isNotBlank()) save(name, it) } }) { Text("Save") } }, dismissButton = { TextButton(onClick = close) { Text("Cancel") } })
+}
 @Composable
 private fun KitchenQueue(queue: List<PendingSale>, profile: CompanyProfile, printer: PrinterManager, pay: (PendingSale) -> Unit, edit: (PendingSale) -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
