@@ -111,4 +111,37 @@ fun receiptBytes(company:String,s:Sale,logoBytes:ByteArray?=null):ByteArray{val 
 
 
 fun storeLogo(context:Context)=context.getSharedPreferences("pos",0).getString("logo","")?:""
-fun loadLogo(context:Context,uri:String):ByteArray?{if(uri.isBlank())return null;return runCatching{val b=BitmapFactory.decodeStream(context.contentResolver.openInputStream(Uri.parse(uri)))?:return@runCatching null;val w=384;val h=(b.height.toFloat()*w/b.width).toInt().coerceAtMost(160);val scaled=Bitmap.createScaledBitmap(b,w,h,true);val rowBytes=(w+7)/8;val data=ByteArray(rowBytes*h);for(y in 0 until h)for(x in 0 until w){val p=scaled.getPixel(x,y);val gray=(android.graphics.Color.red(p)*299+android.graphics.Color.green(p)*587+android.graphics.Color.blue(p)*114)/1000;if(gray<160)data[y*rowBytes+x/8]=(data[y*rowBytes+x/8].toInt() or (0x80 shr (x%8))).toByte()};java.io.ByteArrayOutputStream().apply{write(byteArrayOf(0x1D,0x76,0x30,0x00,(rowBytes and 255).toByte(),(rowBytes shr 8).toByte(),(h and 255).toByte(),(h shr 8).toByte()));write(data);write(byteArrayOf(0x0A))}.toByteArray()}.getOrNull()}
+fun loadLogo(context: Context, uriText: String): ByteArray? {
+    if (uriText.isBlank()) return null
+    return try {
+        val input = context.contentResolver.openInputStream(Uri.parse(uriText)) ?: return null
+        val bitmap = BitmapFactory.decodeStream(input) ?: return null
+        input.close()
+        val width = 384
+        val height = (bitmap.height.toFloat() * width / bitmap.width).toInt().coerceAtMost(160)
+        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, width, height, true)
+        val rowBytes = (width + 7) / 8
+        val data = ByteArray(rowBytes * height)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val p = scaled.getPixel(x, y)
+                val gray = (android.graphics.Color.red(p) * 299 +
+                    android.graphics.Color.green(p) * 587 +
+                    android.graphics.Color.blue(p) * 114) / 1000
+                if (gray < 160) {
+                    val index = y * rowBytes + x / 8
+                    data[index] = (data[index].toInt() or (0x80 shr (x % 8))).toByte()
+                }
+            }
+        }
+        ByteArrayOutputStream().apply {
+            write(byteArrayOf(0x1D, 0x76, 0x30, 0x00,
+                (rowBytes and 255).toByte(), (rowBytes shr 8).toByte(),
+                (height and 255).toByte(), (height shr 8).toByte()))
+            write(data)
+            write(byteArrayOf(0x0A))
+        }.toByteArray()
+    } catch (_: Exception) {
+        null
+    }
+}
