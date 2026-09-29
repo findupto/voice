@@ -145,7 +145,7 @@ class MainActivity : ComponentActivity() {
     private fun readMenuCsv(uri: Uri) {
         val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
         val imported = text.lines().drop(1).mapNotNull { line ->
-            val parts = line.split(",").map { it.trim().trim('"').replace("\"\"", "\"") }
+            val parts = parseCsvLine(line)
             when {
                 parts.size >= 4 -> {
                     val name = parts[0]
@@ -164,7 +164,34 @@ class MainActivity : ComponentActivity() {
                 else -> null
             }
         }
-        if (imported.isNotEmpty()) store.saveMenu(imported.distinctBy { it.name.lowercase() })
+        if (imported.isNotEmpty()) {
+            val merged = (store.menu() + imported).distinctBy { item ->
+                item.name.trim().lowercase() + "|" + item.variant.trim().lowercase() + "|" + item.size.trim().lowercase()
+            }
+            store.saveMenu(merged)
+            voiceStatus.value = "Imported " + imported.size + " menu row(s)"
+        } else {
+            voiceStatus.value = "No valid menu rows found in CSV"
+        }
+    }
+
+    private fun parseCsvLine(line: String): List<String> {
+        val result = mutableListOf<String>()
+        val current = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < line.length) {
+            val ch = line[i]
+            when {
+                ch == '"' && inQuotes && i + 1 < line.length && line[i + 1] == '"' -> { current.append('"'); i++ }
+                ch == '"' -> inQuotes = !inQuotes
+                ch == ',' && !inQuotes -> { result += current.toString().trim(); current.clear() }
+                else -> current.append(ch)
+            }
+            i++
+        }
+        result += current.toString().trim()
+        return result
     }
 
     private fun importedHash(name: String): Long = name.hashCode().toLong() and 0xffffffffL
