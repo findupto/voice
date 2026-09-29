@@ -1,4 +1,63 @@
 package com.findupto.voicepos
+
 import java.util.Locale
-sealed class VoiceCommand{data class Add(val item:SaleItem):VoiceCommand();data object CompletePrint:VoiceCommand();data object Complete:VoiceCommand();data object Clear:VoiceCommand();data object Sales:VoiceCommand();data object Expenses:VoiceCommand();data object Reports:VoiceCommand();data object Settings:VoiceCommand();data class Remove(val name:String):VoiceCommand()}
-object VoiceCommandEngine{private val words=mapOf("zero" to 0,"one" to 1,"two" to 2,"three" to 3,"four" to 4,"five" to 5,"six" to 6,"seven" to 7,"eight" to 8,"nine" to 9,"ten" to 10);fun parse(raw:String):List<VoiceCommand>{var s=raw.lowercase(Locale.US).replace(" rupees "," rs ").replace(" rupee "," rs ");words.forEach{(w,n)->s=s.replace(Regex("\\b$w\\b"),n.toString())};val o=mutableListOf<VoiceCommand>();if(Regex("\\b(clear|empty|cancel) (the )?(cart|order)\\b").containsMatchIn(s))o+=VoiceCommand.Clear;if(Regex("\\b(show|open|go to) (sales|sale history)\\b").containsMatchIn(s))o+=VoiceCommand.Sales;if(Regex("\\b(show|open|go to) (expenses|expense)\\b").containsMatchIn(s))o+=VoiceCommand.Expenses;if(Regex("\\b(show|open|go to) (reports|analysis|dashboard)\\b").containsMatchIn(s))o+=VoiceCommand.Reports;if(Regex("\\b(open|show) (settings|printer)\\b").containsMatchIn(s))o+=VoiceCommand.Settings;Regex("(?i)(?:remove|delete) (?:item )?(.+)").find(s)?.let{o+=VoiceCommand.Remove(it.groupValues[1].trim())};val pat=Regex("""(?i)(?:^|,|;|\band\b|\bthen\b)\s*(\d+)\s+(.+?)(?:\s+(?:price|at)\s+|\s+)(?:rs\.?\s*)?(\d+(?:\.\d+)?)(?:\s+each)?(?=,|;|\band\b|\bthen\b|$)""");pat.findAll(s).forEach{m->val q=m.groupValues[1].toIntOrNull()?:0;val n=m.groupValues[2].trim();val pr=m.groupValues[3].toDoubleOrNull()?:0.0;if(q>0&&n.isNotBlank()&&pr>0)o+=VoiceCommand.Add(SaleItem(n,q,pr))};if(Regex("\\b(send|print) (the )?(order|kitchen)\\b").containsMatchIn(s))o+=VoiceCommand.CompletePrint;return o}}
+
+sealed class VoiceCommand {
+    data class Add(val item: SaleItem) : VoiceCommand()
+    data object CompletePrint : VoiceCommand()
+    data object Complete : VoiceCommand()
+    data object Clear : VoiceCommand()
+    data object Sales : VoiceCommand()
+    data object Expenses : VoiceCommand()
+    data object Reports : VoiceCommand()
+    data object Settings : VoiceCommand()
+    data class Remove(val name: String) : VoiceCommand()
+}
+
+object VoiceCommandEngine {
+    private val numberWords = mapOf(
+        "zero" to 0, "one" to 1, "two" to 2, "three" to 3, "four" to 4,
+        "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10
+    )
+
+    fun parse(raw: String): List<VoiceCommand> {
+        var s = raw.lowercase(Locale.US)
+            .replace(" rupees ", " rs ")
+            .replace(" rupee ", " rs ")
+            .replace("rs.", "rs")
+            .trim()
+
+        numberWords.forEach { (word, number) ->
+            s = s.replace(Regex("\\b$word\\b"), number.toString())
+        }
+
+        val out = mutableListOf<VoiceCommand>()
+        if (Regex("\\b(clear|empty|cancel) (the )?(cart|order)\\b").containsMatchIn(s)) out += VoiceCommand.Clear
+        if (Regex("\\b(show|open|go to) (sales|sale history)\\b").containsMatchIn(s)) out += VoiceCommand.Sales
+        if (Regex("\\b(show|open|go to) (expenses|expense)\\b").containsMatchIn(s)) out += VoiceCommand.Expenses
+        if (Regex("\\b(show|open|go to) (reports|analysis|dashboard)\\b").containsMatchIn(s)) out += VoiceCommand.Reports
+        if (Regex("\\b(open|show) (settings|printer)\\b").containsMatchIn(s)) out += VoiceCommand.Settings
+        Regex("(?i)\\b(?:remove|delete) (?:item )?(.+)").find(s)?.let {
+            out += VoiceCommand.Remove(it.groupValues[1].trim())
+        }
+
+        val itemPattern = Regex(
+            """(?:^|,|;|\band\b|\bthen\b|\badd\b)\s*(\d+)\s+(.+?)\s+(?:price|at)\s+(?:rs\s*)?(\d+(?:\.\d+)?)\s*(?:each)?(?=\s*(?:,|;|\band\b|\bthen\b|\badd\b|$))""",
+            RegexOption.IGNORE_CASE
+        )
+
+        itemPattern.findAll(s).forEach { match ->
+            val qty = match.groupValues[1].toIntOrNull() ?: 0
+            val name = match.groupValues[2].trim()
+            val price = match.groupValues[3].toDoubleOrNull() ?: 0.0
+            if (qty > 0 && name.isNotBlank() && price > 0) {
+                out += VoiceCommand.Add(SaleItem(name, qty, price))
+            }
+        }
+
+        if (Regex("\\b(send|print) (the )?(order|kitchen)\\b").containsMatchIn(s)) {
+            out += VoiceCommand.CompletePrint
+        }
+        return out
+    }
+}
