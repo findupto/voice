@@ -133,6 +133,6 @@ fun SalesChart(sales:List<Sale>){
     val vals=(0..6).map{d->val day=Calendar.getInstance().apply{add(Calendar.DAY_OF_YEAR,-d)};sales.filter{val x=Calendar.getInstance().apply{timeInMillis=it.time};x.get(Calendar.YEAR)==day.get(Calendar.YEAR)&&x.get(Calendar.DAY_OF_YEAR)==day.get(Calendar.DAY_OF_YEAR)}.sumOf{it.total}}.reversed()
     val mx=maxOf(1.0,vals.maxOrNull()?:1.0)
     Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
-        vals.forEachIndexed{i,v->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text((i+1).toString(),modifier=Modifier.width(24.dp),style=MaterialTheme.typography.labelSmall);LinearProgressIndicator(progress={ (v/mx).toFloat() },modifier=Modifier.weight(1f).height(10.dp));Spacer(Modifier.width(8.dp));Text(money(v),style=MaterialTheme.typography.labelSmall)}}}
+        vals.forEachIndexed{i,v->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text((i+1).toString(),modifier=Modifier.width(24.dp),style=MaterialTheme.typography.labelSmall);LinearProgressIndicator(progress=(v/mx).toFloat(),modifier=Modifier.weight(1f).height(10.dp));Spacer(Modifier.width(8.dp));Text(money(v),style=MaterialTheme.typography.labelSmall)}}}
 }
 
