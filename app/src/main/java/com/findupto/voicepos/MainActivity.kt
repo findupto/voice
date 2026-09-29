@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.net.Uri
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -56,14 +57,27 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        ensureOfflineVoicePack()
     }
 
     private fun canUseOfflineVoice(): Boolean =
         Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
 
+    private fun ensureOfflineVoicePack() {
+        if (Build.VERSION.SDK_INT < 31 || canUseOfflineVoice()) return
+        voiceStatus.value = "Speech language pack missing — opening Android speech settings"
+        val prefs = getSharedPreferences("voice_pos_v4", MODE_PRIVATE)
+        if (!prefs.getBoolean("speech_settings_prompted", false)) {
+            prefs.edit().putBoolean("speech_settings_prompted", true).apply()
+            runCatching { startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
+                .onFailure { runCatching { startActivity(Intent("com.android.settings.SPEECH_RECOGNITION_SETTINGS")) } }
+        }
+    }
+
     private fun listen() {
         if (!canUseOfflineVoice()) {
-            voiceStatus.value = "Offline voice needs Android 12+ with an installed speech language pack"
+            voiceStatus.value = "Offline voice needs Android 12+ with the speech language pack installed"
+            ensureOfflineVoicePack()
             return
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -119,10 +133,10 @@ class MainActivity : ComponentActivity() {
 
     private fun writeMenuCsv(uri: Uri) {
         val csv = buildString {
-            appendLine("name,price")
+            appendLine("name,variant,size,price")
             store.menu().forEach { item ->
-                val safe = item.name.replace("\"", "\"\"")
-                append("\"").append(safe).append("\",").append(item.price).appendLine()
+                val values = listOf(item.name, item.variant, item.size, item.price.toString())
+                appendLine(values.joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" })
             }
         }
         contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
@@ -131,11 +145,23 @@ class MainActivity : ComponentActivity() {
     private fun readMenuCsv(uri: Uri) {
         val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
         val imported = text.lines().drop(1).mapNotNull { line ->
-            val parts = line.trim().split(",")
-            if (parts.size < 2) null else {
-                val name = parts.dropLast(1).joinToString(",").trim().trim('"').replace("\"\"", "\"")
-                val price = parts.last().trim().toDoubleOrNull()
-                if (name.isBlank() || price == null || price <= 0) null else MenuItem(System.currentTimeMillis() + importedHash(name), name, price)
+            val parts = line.split(",").map { it.trim().trim('"').replace("\"\"", "\"") }
+            when {
+                parts.size >= 4 -> {
+                    val name = parts[0]
+                    val variant = parts[1]
+                    val size = parts[2]
+                    val price = parts[3].toDoubleOrNull()
+                    if (name.isBlank() || price == null || price <= 0) null
+                    else MenuItem(System.currentTimeMillis() + importedHash(name + variant + size), name, price, variant, size)
+                }
+                parts.size >= 2 -> {
+                    val name = parts.dropLast(1).joinToString(",")
+                    val price = parts.last().toDoubleOrNull()
+                    if (name.isBlank() || price == null || price <= 0) null
+                    else MenuItem(System.currentTimeMillis() + importedHash(name), name, price)
+                }
+                else -> null
             }
         }
         if (imported.isNotEmpty()) store.saveMenu(imported.distinctBy { it.name.lowercase() })
