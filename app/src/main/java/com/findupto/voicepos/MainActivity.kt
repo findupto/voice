@@ -4,12 +4,15 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
+import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.compose.runtime.mutableStateOf
 
 class MainActivity : ComponentActivity() {
@@ -18,6 +21,9 @@ class MainActivity : ComponentActivity() {
     private val heard = mutableStateOf("")
     private val voiceStatus = mutableStateOf("Ready for offline voice")
     private var recognizer: SpeechRecognizer? = null
+
+    private val exportMenuLauncher = registerForActivityResult(CreateDocument("text/csv")) { uri -> uri?.let { writeMenuCsv(it) } }
+    private val importMenuLauncher = registerForActivityResult(OpenDocument()) { uri -> uri?.let { readMenuCsv(it) } }
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         voiceStatus.value = if (canUseOfflineVoice()) "Offline voice ready" else "Offline voice model unavailable"
@@ -43,7 +49,10 @@ class MainActivity : ComponentActivity() {
                     heard = heard.value,
                     voiceStatus = voiceStatus.value,
                     clearHeard = { heard.value = "" },
-                    listen = ::listen
+                    listen = ::listen,
+                    openSpeechSettings = ::openSpeechSettings,
+                    exportMenu = { exportMenuLauncher.launch("voice-pos-menu.csv") },
+                    importMenu = { importMenuLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain")) }
                 )
             }
         }
@@ -75,6 +84,10 @@ class MainActivity : ComponentActivity() {
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH -> "No speech heard — try again"
                         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening timed out — try again"
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required"
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "English (Pakistan) speech pack is unavailable"
+                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "English (Pakistan) speech pack is unavailable"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer is busy — try again"
                         else -> "Offline voice error — check the speech language pack"
                     }
                 }
@@ -96,6 +109,39 @@ class MainActivity : ComponentActivity() {
         }
         recognizer?.startListening(intent)
     }
+
+    private fun openSpeechSettings() {
+        val intent = Intent("com.android.settings.SPEECH_RECOGNITION_SETTINGS")
+        runCatching { startActivity(intent) }.onFailure {
+            startActivity(Intent("android.settings.SETTINGS"))
+        }
+    }
+
+    private fun writeMenuCsv(uri: Uri) {
+        val csv = buildString {
+            appendLine("name,price")
+            store.menu().forEach { item ->
+                val safe = item.name.replace("\"", "\"\"")
+                append("\"").append(safe).append("\",").append(item.price).appendLine()
+            }
+        }
+        contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+    }
+
+    private fun readMenuCsv(uri: Uri) {
+        val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
+        val imported = text.lines().drop(1).mapNotNull { line ->
+            val parts = line.trim().split(",")
+            if (parts.size < 2) null else {
+                val name = parts.dropLast(1).joinToString(",").trim().trim('"').replace("\"\"", "\"")
+                val price = parts.last().trim().toDoubleOrNull()
+                if (name.isBlank() || price == null || price <= 0) null else MenuItem(System.currentTimeMillis() + importedHash(name), name, price)
+            }
+        }
+        if (imported.isNotEmpty()) store.saveMenu(imported.distinctBy { it.name.lowercase() })
+    }
+
+    private fun importedHash(name: String): Long = name.hashCode().toLong() and 0xffffffffL
 
     override fun onDestroy() {
         recognizer?.destroy()
