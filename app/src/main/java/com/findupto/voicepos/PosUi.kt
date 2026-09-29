@@ -72,9 +72,9 @@ fun PosApp(
                         } else cart + command.item
                     }
                     VoiceCommand.Clear -> cart = emptyList()
-                    VoiceCommand.Sales -> tab = 2
-                    VoiceCommand.Expenses -> tab = 3
-                    VoiceCommand.Reports -> tab = 4
+                    VoiceCommand.Sales -> tab = 3
+                    VoiceCommand.Expenses -> tab = 4
+                    VoiceCommand.Reports -> tab = 5
                     VoiceCommand.Settings -> settings = true
                     is VoiceCommand.Remove -> cart = cart.filterNot { it.name.contains(command.name, true) }
                     VoiceCommand.CompletePrint -> {
@@ -146,13 +146,16 @@ fun PosApp(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                0 -> QuickSale(cart, voiceStatus, ::sendOrder, listen, { cart = emptyList() }) { item, delta ->
+                0 -> QuickSale(cart, voiceStatus, ::sendOrder, listen, openSpeechSettings, { cart = emptyList() }) { item, delta ->
                     cart = cart.map { if (it == item) it.copy(qty = (it.qty + delta).coerceAtLeast(0)) else it }.filter { it.qty > 0 }
                 }
-                1 -> MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu)
+                1 -> MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu) { item ->
+                    val index = cart.indexOfFirst { it.name.equals(item.name, true) && it.price == item.price }
+                    cart = if (index >= 0) cart.toMutableList().also { list -> list[index] = list[index].copy(qty = list[index].qty + 1) } else cart + SaleItem(item.name, 1, item.price)
+                    tab = 0
+                }
                 2 -> KitchenQueue(pending, profile, printer, ::pay) { editing = it }
-                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
-                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
+                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
                 4 -> ExpensesPage(expenses.filter { inRange(it.time, filter) }, filter, { filter = it }) { expense = true }
                 5 -> Analytics(sales.filter { inRange(it.time, filter) }, expenses.filter { inRange(it.time, filter) }, cash, filter, { filter = it })
             }
@@ -182,6 +185,7 @@ private fun QuickSale(
     voiceStatus: String,
     send: () -> Unit,
     listen: () -> Unit,
+    openSpeechSettings: () -> Unit,
     clear: () -> Unit,
     changeQty: (SaleItem, Int) -> Unit
 ) {
@@ -243,7 +247,7 @@ private fun QuickSale(
 
 
 @Composable
-private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit) {
+private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, addToCart: (MenuItem) -> Unit) {
     var adding by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,7 +258,7 @@ private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () 
         Text("Tap a product to add it to the cart", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (menu.isEmpty()) EmptyState(Icons.Default.MenuBook, "No products", "Add products one by one or upload a CSV menu.")
         LazyColumn { items(menu) { item ->
-            Card(Modifier.fillMaxWidth().clickable { refresh(); }) {
+            Card(Modifier.fillMaxWidth().clickable { addToCart(item) }) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text(money(item.price), style = MaterialTheme.typography.bodySmall) }
                     IconButton(onClick = { store.removeMenuItem(item.id); refresh() }) { Icon(Icons.Default.Delete, "Delete") }
