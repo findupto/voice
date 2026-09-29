@@ -155,7 +155,7 @@ fun PosApp(
                     tab = 0
                 }
                 2 -> KitchenQueue(pending, profile, printer, ::pay) { editing = it }
-                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
+                3 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
                 4 -> ExpensesPage(expenses.filter { inRange(it.time, filter) }, filter, { filter = it }) { expense = true }
                 5 -> Analytics(sales.filter { inRange(it.time, filter) }, expenses.filter { inRange(it.time, filter) }, cash, filter, { filter = it })
             }
