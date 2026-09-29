@@ -26,7 +26,7 @@ object VoiceCommandEngine {
         if(Regex("\\b(show|open|go to) (reports|analysis|dashboard)\\b").containsMatchIn(s)) out+=VoiceCommand.Reports
         if(Regex("\\b(open|show) (settings|printer)\\b").containsMatchIn(s)) out+=VoiceCommand.Settings
         val remove=Regex("(?i)(?:remove|delete) (?:item )?(.+)").find(s); if(remove!=null) out+=VoiceCommand.Remove(remove.groupValues[1].trim())
-        val pat=Regex("""(?i)(?:^|,|;|\\band\\b|\\bthen\\b)\\s*(\\d+)\\s+(.+?)(?:\\s+(?:price|at)\\s+|\\s+)(?:rs\\.?\\s*)?(\\d+(?:\\.\\d+)?)(?:\\s+each)?(?=,|;|\\band\\b|\\bthen\\b|$)""")
+        val pat=Regex("""(?i)(?:^|,|;|\band\b|\bthen\b)\s*(\d+)\s+(.+?)(?:\s+(?:price|at)\s+|\s+)(?:rs\.?\s*)?(\d+(?:\.\d+)?)(?:\s+each)?(?=,|;|\band\b|\bthen\b|$)""")
         pat.findAll(s).forEach{m->val q=m.groupValues[1].toIntOrNull()?:0;val n=m.groupValues[2].trim().removeSuffix("price").trim();val pr=m.groupValues[3].toDoubleOrNull()?:0.0;if(q>0&&n.isNotBlank()&&pr>0)out+=VoiceCommand.Add(SaleItem(n,q,pr))}
         if(Regex("\\bcomplete (the )?(sale|order|bill)\\b").containsMatchIn(s)) out+=if(Regex("\\bprint\\b").containsMatchIn(s)) VoiceCommand.CompletePrint else VoiceCommand.Complete
         return out
