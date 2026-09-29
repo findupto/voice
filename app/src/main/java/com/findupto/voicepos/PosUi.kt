@@ -76,6 +76,16 @@ fun PosApp(
                     VoiceCommand.Expenses -> tab = 4
                     VoiceCommand.Reports -> tab = 5
                     VoiceCommand.Settings -> settings = true
+                    VoiceCommand.Menu -> tab = 1
+                    VoiceCommand.Kitchen -> tab = 2
+                    VoiceCommand.Analytics -> tab = 5
+                    VoiceCommand.NewOrder -> cart = emptyList()
+                    is VoiceCommand.PayLast -> pending.lastOrNull()?.let { pay(it) }
+                    is VoiceCommand.Quantity -> {
+                        cart = cart.map { item ->
+                            if (item.name.contains(command.name, true)) item.copy(qty = (item.qty + command.delta).coerceAtLeast(0)) else item
+                        }.filter { it.qty > 0 }
+                    }
                     is VoiceCommand.Remove -> cart = cart.filterNot { it.name.contains(command.name, true) }
                     VoiceCommand.CompletePrint -> {
                         if (cart.isNotEmpty()) {
