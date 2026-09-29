@@ -255,26 +255,49 @@ private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () 
             OutlinedButton(onClick = exportMenu, modifier = Modifier.weight(1f)) { Text("Download CSV") }
             OutlinedButton(onClick = importMenu, modifier = Modifier.weight(1f)) { Text("Upload CSV") }
         }
-        Text("Tap a product to add it to the cart", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Add multiple rows for the same product to create different variants/sizes and prices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (menu.isEmpty()) EmptyState(Icons.Default.MenuBook, "No products", "Add products one by one or upload a CSV menu.")
         LazyColumn { items(menu) { item ->
             Card(Modifier.fillMaxWidth().clickable { addToCart(item) }) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text(money(item.price), style = MaterialTheme.typography.bodySmall) }
+                    Column(Modifier.weight(1f)) {
+                        Text(item.name, fontWeight = FontWeight.SemiBold)
+                        val details = listOf(item.variant, item.size).filter { it.isNotBlank() }.joinToString(" • ")
+                        if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        Text(money(item.price), style = MaterialTheme.typography.bodySmall)
+                    }
                     IconButton(onClick = { store.removeMenuItem(item.id); refresh() }) { Icon(Icons.Default.Delete, "Delete") }
                 }
             }
         } }
     }
-    if (adding) AddMenuDialog({ name, price -> store.addMenuItem(MenuItem(System.currentTimeMillis(), name.trim(), price)); adding = false; refresh() }) { adding = false }
+    if (adding) AddMenuDialog({ name, variant, size, price ->
+        store.addMenuItem(MenuItem(System.currentTimeMillis(), name.trim(), price, variant.trim(), size.trim()))
+        adding = false
+        refresh()
+    }) { adding = false }
 }
 
 @Composable
-private fun AddMenuDialog(save: (String, Double) -> Unit, close: () -> Unit) {
-    var name by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = close, title = { Text("Add Product") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(name, { name = it }, label = { Text("Product name") }); OutlinedTextField(price, { price = it }, label = { Text("Price") })
-    } }, confirmButton = { TextButton(onClick = { price.toDoubleOrNull()?.takeIf { it > 0 }?.let { if (name.isNotBlank()) save(name, it) } }) { Text("Save") } }, dismissButton = { TextButton(onClick = close) { Text("Cancel") } })
+private fun AddMenuDialog(save: (String, String, String, Double) -> Unit, close: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var variant by remember { mutableStateOf("") }
+    var size by remember { mutableStateOf("") }
+    var price by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Add Product / Variant / Size") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(name, { name = it }, label = { Text("Product name") })
+            OutlinedTextField(variant, { variant = it }, label = { Text("Variant (e.g. Chicken, Beef)") })
+            OutlinedTextField(size, { size = it }, label = { Text("Size (e.g. Small, Medium, Large)") })
+            OutlinedTextField(price, { price = it }, label = { Text("Price") })
+        } },
+        confirmButton = { TextButton(onClick = {
+            price.toDoubleOrNull()?.takeIf { it > 0 }?.let { if (name.isNotBlank()) save(name, variant, size, it) }
+        }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = close) { Text("Cancel") } }
+    )
 }
 @Composable
 private fun KitchenQueue(queue: List<PendingSale>, profile: CompanyProfile, printer: PrinterManager, pay: (PendingSale) -> Unit, edit: (PendingSale) -> Unit) {
