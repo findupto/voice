@@ -3,6 +3,8 @@ package com.findupto.voicepos
 import android.bluetooth.*
 import android.content.*
 import android.os.Bundle
+import android.os.Build
+import android.content.pm.PackageManager
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
@@ -53,8 +55,9 @@ class PrinterManager{
 class MainActivity:ComponentActivity(){
  private lateinit var store:Store;private lateinit var printer:PrinterManager
  private val voice=mutableStateOf("")
+ private val permissionLauncher=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){}
  private val launcher=registerForActivityResult(ActivityResultContracts.StartActivityForResult()){r->voice.value=r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:""}
- override fun onCreate(b:Bundle?){super.onCreate(b);store=Store(this);printer=PrinterManager();setContent{App(store,printer,{listen()},voice.value){voice.value=""}}}
+ override fun onCreate(b:Bundle?){super.onCreate(b);store=Store(this);printer=PrinterManager();val ps=mutableListOf(android.Manifest.permission.RECORD_AUDIO);if(Build.VERSION.SDK_INT>=31){ps+=android.Manifest.permission.BLUETOOTH_SCAN;ps+=android.Manifest.permission.BLUETOOTH_CONNECT};permissionLauncher.launch(ps.toTypedArray());setContent{App(store,printer,{listen()},voice.value){voice.value=""}}}
  private fun listen(){if(!SpeechRecognizer.isRecognitionAvailable(this))return;launcher.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);putExtra(RecognizerIntent.EXTRA_LANGUAGE,"en-PK");putExtra(RecognizerIntent.EXTRA_PROMPT,"Speak your sale")})}
  override fun onDestroy(){printer.close();super.onDestroy()}
 }
