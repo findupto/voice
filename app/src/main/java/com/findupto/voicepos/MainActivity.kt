@@ -106,6 +106,21 @@ fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(
 
 @Composable fun OpeningCashDialog(store:Store,done:(Double)->Unit){var v by remember{mutableStateOf("")};AlertDialog(onDismissRequest={},title={Text("Opening Cash")},text={OutlinedTextField(v,{v=it},label={Text("Cash in hand / counter cash")})},confirmButton={TextButton({val n=v.toDoubleOrNull()?:0.0;store.setOpeningCash(n);done(n)}){Text("Continue")}})}
 
-fun receiptBytes(company:String,s:Sale,logoBytes:ByteArray?=null):ByteArray{val out=java.io.ByteArrayOutputStream();fun w(x:String){out.write(x.toByteArray(Charsets.UTF_8))};out.write(byteArrayOf(0x1B,0x40));out.write(byteArrayOf(0x1B,0x61,0x01));if(logoBytes!=null)out.write(logoBytes);w(company+"\n");w("SALE #"+s.id+"\n");w(date(s.time)+"\n");out.write(byteArrayOf(0x1B,0x61,0x00));w("--------------------------------\n");s.items.forEach{w("${it.qty} x ${it.name}\n");w("    ${money(it.total)}\n")};w("--------------------------------\n");w("TOTAL: "+money(s.total)+"\n\n\n");return out.toByteArray()}
-
-
+fun receiptBytes(company: String, sale: Sale, logoBytes: ByteArray? = null): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    out.write(byteArrayOf(0x1B, 0x40))
+    out.write(byteArrayOf(0x1B, 0x61, 0x01))
+    if (logoBytes != null) out.write(logoBytes)
+    out.write((company + "\n").toByteArray(Charsets.UTF_8))
+    out.write(("SALE #" + sale.id + "\n").toByteArray(Charsets.UTF_8))
+    out.write((date(sale.time) + "\n").toByteArray(Charsets.UTF_8))
+    out.write(byteArrayOf(0x1B, 0x61, 0x00))
+    out.write("--------------------------------\n".toByteArray(Charsets.UTF_8))
+    sale.items.forEach { item ->
+        out.write(("${item.qty} x ${item.name}\n").toByteArray(Charsets.UTF_8))
+        out.write(("    ${money(item.total)}\n").toByteArray(Charsets.UTF_8))
+    }
+    out.write("--------------------------------\n".toByteArray(Charsets.UTF_8))
+    out.write(("TOTAL: " + money(sale.total) + "\n\n\n").toByteArray(Charsets.UTF_8))
+    return out.toByteArray()
+}
