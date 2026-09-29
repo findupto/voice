@@ -1,33 +1,67 @@
 name: Build Android APK
+
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Verify APK
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Prepare downloadable APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoicePOS-${{ github.run_number }}.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
-          gradle-version: "8.9"
-      - run: gradle assembleDebug --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: VoicePOS-premium-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-      - name: Publish APK release
+          name: VoicePOS-APK-build-${{ github.run_number }}
+          path: VoicePOS-${{ github.run_number }}.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2.0.0-build-${{ github.run_number }}
           name: Voice POS Premium v2.0 build ${{ github.run_number }}
-          files: app/build/outputs/apk/debug/app-debug.apk
+          body: |
+            Automated Android APK build.
+
+            Build: ${{ github.run_number }}
+            Commit: ${{ github.sha }}
+
+            The APK is attached below as a direct downloadable release asset.
+          files: VoicePOS-${{ github.run_number }}.apk
           make_latest: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
