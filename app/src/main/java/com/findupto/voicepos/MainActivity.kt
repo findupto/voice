@@ -88,12 +88,12 @@ class MainActivity:ComponentActivity(){
  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())){
   Card(Modifier.fillMaxWidth().padding(vertical=10.dp)){Column(Modifier.padding(18.dp)){Text("Quick Sale",style=MaterialTheme.typography.titleLarge);Text(company,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(12.dp));Button(listen,Modifier.fillMaxWidth()){Icon(Icons.Default.Mic,null);Spacer(Modifier.width(8.dp));Text("Speak Sale")};Spacer(Modifier.height(10.dp))
    cart.forEach{x->ListItem({Text(x.name)},supportingContent={Text("${x.qty} × ${money(x.price)}")},trailingContent={Text(money(x.total))})};HorizontalDivider();Row(Modifier.fillMaxWidth().padding(top=12.dp),Arrangement.SpaceBetween){Text("Total",style=MaterialTheme.typography.titleLarge);Text(money(cart.sumOf{it.total}),style=MaterialTheme.typography.titleLarge)}
-   Spacer(Modifier.height(10.dp));if(cart.isNotEmpty())Button({val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());printer.print(receiptBytes(company,s,loadLogo(context, storeLogo(context))))}){Icon(Icons.Default.Print,null);Spacer(Modifier.width(6.dp));Text("Print Current Sale")};Spacer(Modifier.height(10.dp));Text("Say: “4 special shawarma price 200 each, 2 large chicken fajita price 1350 each…”",style=MaterialTheme.typography.bodySmall)
+   Spacer(Modifier.height(10.dp));if(cart.isNotEmpty())Button({val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());printer.print(receiptBytes(company,s))}){Icon(Icons.Default.Print,null);Spacer(Modifier.width(6.dp));Text("Print Current Sale")};Spacer(Modifier.height(10.dp));Text("Say: “4 special shawarma price 200 each, 2 large chicken fajita price 1350 each…”",style=MaterialTheme.typography.bodySmall)
   }
  }
 }
 
-@Composable fun SalesScreen(sales:List<Sale>,company:String,printer:PrinterManager,context:Context){LazyColumn{items(sales.reversed()){s->Card(Modifier.fillMaxWidth().padding(vertical=5.dp)){Column(Modifier.padding(14.dp)){Text("${s.id}",style=MaterialTheme.typography.labelSmall);Text(money(s.total),style=MaterialTheme.typography.titleLarge);Text(s.items.joinToString(", "){"${it.qty}× ${it.name}"});Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween,Alignment.CenterVertically){Text(date(s.time),style=MaterialTheme.typography.bodySmall);TextButton({printer.print(receiptBytes(company,s,loadLogo(context, storeLogo(context))))}){Text("Re-print")}}}}}}
+@Composable fun SalesScreen(sales:List<Sale>,company:String,printer:PrinterManager,context:Context){LazyColumn{items(sales.reversed()){s->Card(Modifier.fillMaxWidth().padding(vertical=5.dp)){Column(Modifier.padding(14.dp)){Text("${s.id}",style=MaterialTheme.typography.labelSmall);Text(money(s.total),style=MaterialTheme.typography.titleLarge);Text(s.items.joinToString(", "){"${it.qty}× ${it.name}"});Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween,Alignment.CenterVertically){Text(date(s.time),style=MaterialTheme.typography.bodySmall);TextButton({printer.print(receiptBytes(company,s))}){Text("Re-print")}}}}}}
 @Composable fun ExpensesScreen(es:List<Expense>,add:()->Unit){Row(Modifier.fillMaxWidth().padding(vertical=10.dp),Arrangement.SpaceBetween,Alignment.CenterVertically){Text("Expenses",style=MaterialTheme.typography.headlineSmall);Button(add){Text("Add")}};LazyColumn{items(es.reversed()){e->ListItem({Text(e.title)},supportingContent={Text(date(e.time))},trailingContent={Text(money(e.amount))})}}}
 @Composable fun ReportsScreen(s:Double,e:Double,c:Double){Column(Modifier.verticalScroll(rememberScrollState())){Text("Reports",style=MaterialTheme.typography.headlineSmall);Metric("Total Sales",s);Metric("Total Expenses",e);Metric("Cash In Hand",c);Metric("Net",s-e)}}
 @Composable fun Metric(t:String,v:Double){Card(Modifier.fillMaxWidth().padding(vertical=5.dp)){Row(Modifier.fillMaxWidth().padding(18.dp),Arrangement.SpaceBetween){Text(t);Text(money(v),style=MaterialTheme.typography.titleLarge)}}}
@@ -109,39 +109,3 @@ fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(
 fun receiptBytes(company:String,s:Sale,logoBytes:ByteArray?=null):ByteArray{val out=java.io.ByteArrayOutputStream();fun w(x:String){out.write(x.toByteArray(Charsets.UTF_8))};out.write(byteArrayOf(0x1B,0x40));out.write(byteArrayOf(0x1B,0x61,0x01));if(logoBytes!=null)out.write(logoBytes);w(company+"\n");w("SALE #"+s.id+"\n");w(date(s.time)+"\n");out.write(byteArrayOf(0x1B,0x61,0x00));w("--------------------------------\n");s.items.forEach{w("${it.qty} x ${it.name}\n");w("    ${money(it.total)}\n")};w("--------------------------------\n");w("TOTAL: "+money(s.total)+"\n\n\n");return out.toByteArray()}
 
 
-
-fun storeLogo(context:Context)=context.getSharedPreferences("pos",0).getString("logo","")?:""
-fun loadLogo(context: Context, uriText: String): ByteArray? {
-    if (uriText.isBlank()) return null
-    return try {
-        val input = context.contentResolver.openInputStream(Uri.parse(uriText)) ?: return null
-        val bitmap = BitmapFactory.decodeStream(input) ?: return null
-        input.close()
-        val width = 384
-        val height = (bitmap.height.toFloat() * width / bitmap.width).toInt().coerceAtMost(160)
-        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, width, height, true)
-        val rowBytes = (width + 7) / 8
-        val data = ByteArray(rowBytes * height)
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val p = scaled.getPixel(x, y)
-                val gray = (android.graphics.Color.red(p) * 299 +
-                    android.graphics.Color.green(p) * 587 +
-                    android.graphics.Color.blue(p) * 114) / 1000
-                if (gray < 160) {
-                    val index = y * rowBytes + x / 8
-                    data[index] = (data[index].toInt() or (0x80 shr (x % 8))).toByte()
-                }
-            }
-        }
-        ByteArrayOutputStream().apply {
-            write(byteArrayOf(0x1D, 0x76, 0x30, 0x00,
-                (rowBytes and 255).toByte(), (rowBytes shr 8).toByte(),
-                (height and 255).toByte(), (height shr 8).toByte()))
-            write(data)
-            write(byteArrayOf(0x0A))
-        }.toByteArray()
-    } catch (_: Exception) {
-        null
-    }
-}
