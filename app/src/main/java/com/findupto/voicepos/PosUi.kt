@@ -128,31 +128,11 @@ fun Analytics(sales:List<Sale>,expenses:List<Expense>,cash:Double,filter:Int,set
     }
 }
 @Composable fun Metric(t:String,v:Double,i:ImageVector,m:Modifier){Card(m,shape=RoundedCornerShape(22.dp)){Column(Modifier.padding(16.dp)){Icon(i,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.height(10.dp));Text(t,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(money(v),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}}}
-@Composable fun SalesChart(sales:List<Sale>){
-    val barColor=MaterialTheme.colorScheme.primary
-    val vals=(0..6).map{d->val day=Calendar.getInstance().apply{add(Calendar.DAY_OF_YEAR,-d)};sales.filter{val c=Calendar.getInstance().apply{timeInMillis=it.time};c.get(Calendar.YEAR)==day.get(Calendar.YEAR)&&c.get(Calendar.DAY_OF_YEAR)==day.get(Calendar.DAY_OF_YEAR)}.sumOf{it.total}}.reversed()
-    val mx=maxOf(1.0,vals.maxOrNull()?:1.0)
-    Canvas(Modifier.fillMaxWidth().height(150.dp)){val gap=size.width/7f;vals.forEachIndexed{i,v->val h=(v/mx*(size.height-15)).toFloat();drawLine(barColor,androidx.compose.ui.geometry.Offset(i*gap+gap/2,size.height-4),androidx.compose.ui.geometry.Offset(i*gap+gap/2,size.height-4-h),strokeWidth=gap*.48f,cap=StrokeCap.Round)}}
-}
-
 @Composable
-fun SettingsPage(store:Store,printer:PrinterManager,close:()->Unit){
-    var p by remember{mutableStateOf(store.profile())};var theme by remember{mutableStateOf(store.theme())};var status by remember{mutableStateOf(if(printer.connected())"Connected" else "Not connected")}
-    AlertDialog(onDismissRequest=close,title={Text("POS Settings")},text={Column(Modifier.heightIn(max=560.dp).verticalScroll(rememberScrollState())){
-        Text("Company profile",fontWeight=FontWeight.Bold);Field("Business name",p.name){p=p.copy(name=it)};Field("Address",p.address){p=p.copy(address=it)};Field("Phone",p.phone){p=p.copy(phone=it)};Field("Receipt footer",p.footer){p=p.copy(footer=it)}
-        Spacer(Modifier.height(12.dp));Text("Receipt theme",fontWeight=FontWeight.Bold);ReceiptTheme.values().forEach{t->ListItem(headlineContent={Text(t.name.lowercase().replaceFirstChar{c->c.uppercase()})},supportingContent={Text(themeText(t))},leadingContent={RadioButton(theme==t,{theme=t})},modifier=Modifier.clickable{theme=t})}
-        Spacer(Modifier.height(8.dp));Text("Bluetooth printer",fontWeight=FontWeight.Bold);Button({printer.discover()},Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothSearching,null);Spacer(Modifier.width(7.dp));Text(if(printer.discovering)"Scanning nearby…" else "Discover nearby printers")};Text(status,style=MaterialTheme.typography.labelSmall)
-        printer.devices.forEach{d->DeviceRow(d){status=if(printer.connect(d))"Connected: "+(d.name?:"Printer") else "Connection failed"}}
-        Text("Supports classic Bluetooth SPP / ESC-POS 80mm printers.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    }},confirmButton={TextButton({store.saveProfile(p);store.setTheme(theme);close()}){Text("Save changes")}})
+fun SalesChart(sales:List<Sale>){
+    val vals=(0..6).map{d->val day=Calendar.getInstance().apply{add(Calendar.DAY_OF_YEAR,-d)};sales.filter{val x=Calendar.getInstance().apply{timeInMillis=it.time};x.get(Calendar.YEAR)==day.get(Calendar.YEAR)&&x.get(Calendar.DAY_OF_YEAR)==day.get(Calendar.DAY_OF_YEAR)}.sumOf{it.total}}.reversed()
+    val mx=maxOf(1.0,vals.maxOrNull()?:1.0)
+    Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+        vals.forEachIndexed{i,v->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text((i+1).toString(),modifier=Modifier.width(24.dp),style=MaterialTheme.typography.labelSmall);LinearProgressIndicator(progress={ (v/mx).toFloat() },modifier=Modifier.weight(1f).height(10.dp));Spacer(Modifier.width(8.dp));Text(money(v),style=MaterialTheme.typography.labelSmall)}}}
 }
-@Composable fun DeviceRow(d:BluetoothDevice,connect:()->Unit){ListItem(headlineContent={Text(d.name?:"Bluetooth device")},supportingContent={Text(d.address)},trailingContent={TextButton(connect){Text("Connect")}})}
-@Composable fun Field(l:String,v:String,c:(String)->Unit){OutlinedTextField(v,c,label={Text(l)},modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),singleLine=l!="Receipt footer")}
-fun themeText(t:ReceiptTheme)=when(t){ReceiptTheme.CLASSIC->"Centered traditional receipt";ReceiptTheme.MODERN->"Clean bold totals";ReceiptTheme.COMPACT->"Dense paper-saving layout";ReceiptTheme.RESTAURANT->"Food-service item emphasis"}
 
-@Composable fun SaleDialog(s:Sale,p:CompanyProfile,printer:PrinterManager,theme:ReceiptTheme,close:()->Unit){AlertDialog(onDismissRequest=close,title={Text("Sale #"+s.id)},text={Column(Modifier.verticalScroll(rememberScrollState())){Text(date(s.time),color=MaterialTheme.colorScheme.onSurfaceVariant);s.items.forEach{Row(Modifier.fillMaxWidth().padding(vertical=5.dp),Arrangement.SpaceBetween){Text(it.qty.toString()+" × "+it.name,Modifier.weight(1f));Text(money(it.total))}};HorizontalDivider();Row(Modifier.fillMaxWidth().padding(top=8.dp),Arrangement.SpaceBetween){Text("Total",fontWeight=FontWeight.Bold);Text(money(s.total),fontWeight=FontWeight.Bold)}}},confirmButton={Button({printer.print(receipt(s,p,theme));close()}){Icon(Icons.Default.Print,null);Spacer(Modifier.width(5.dp));Text("Re-print")}},dismissButton={TextButton(close){Text("Close")}})}
-@Composable fun ExpenseDialog(done:(String,String,Double)->Unit){
-    var n by remember{mutableStateOf("")};var c by remember{mutableStateOf("General")};var a by remember{mutableStateOf("")}
-    AlertDialog(onDismissRequest={},title={Text("Record expense")},text={Column{Field("Description",n){n=it};Field("Category",c){c=it};Field("Amount",a){a=it}}},confirmButton={TextButton({a.toDoubleOrNull()?.takeIf{it>0}?.let{done(n.ifBlank{"Expense"},c.ifBlank{"General"},it)}}){Text("Save")}})
-}
-@Composable fun OpeningCash(done:(Double)->Unit){var v by remember{mutableStateOf("")};AlertDialog(onDismissRequest={},title={Text("Start your shift")},text={Column{Text("Enter cash currently in the counter.");Field("Opening cash",v){v=it}}},confirmButton={Button({done(v.toDoubleOrNull()?:0.0)}){Text("Start POS")}})}
