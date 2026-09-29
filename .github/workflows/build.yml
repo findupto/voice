@@ -20,3 +20,12 @@ jobs:
         with:
           name: VoicePOS-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-build-${{ github.run_number }}
+          name: Voice POS v1.0.0 build ${{ github.run_number }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
