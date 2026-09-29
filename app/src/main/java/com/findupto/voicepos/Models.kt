@@ -1,6 +1,6 @@
 package com.findupto.voicepos
 
-data class MenuItem(val id: Long, val name: String, val price: Double)
+data class MenuItem(val id: Long, val name: String, val price: Double, val variant: String = "", val size: String = "")
 data class SaleItem(val name: String, val qty: Int, val price: Double) {
     val total: Double get() = qty * price
 }
