@@ -85,6 +85,19 @@ class Store(context: Context) {
     fun replacePending(s: PendingSale) = savePending(pending().map { if (it.id == s.id) s else it })
     fun removePending(id: Long) = savePending(pending().filterNot { it.id == id })
 
+    fun menu(): List<MenuItem> =
+        p.getString("menu", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
+            runCatching { val a = line.split("^"); MenuItem(a[0].toLong(), a[1], a[2].toDouble()) }.getOrNull()
+        }
+
+    fun saveMenu(items: List<MenuItem>) {
+        val raw = items.joinToString("\n") { item -> "${item.id}^${item.name.replace("^", " ")}^${item.price}" }
+        p.edit().putString("menu", raw).apply()
+    }
+
+    fun addMenuItem(item: MenuItem) = saveMenu(menu() + item)
+    fun removeMenuItem(id: Long) = saveMenu(menu().filterNot { it.id == id })
+
     fun expenses(): List<Expense> =
         p.getString("expenses", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
             runCatching {
