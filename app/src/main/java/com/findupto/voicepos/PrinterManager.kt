@@ -16,7 +16,7 @@ class PrinterManager(private val context:Context){
     private val receiver=object:BroadcastReceiver(){
         override fun onReceive(c:Context?,i:Intent?){
             if(i?.action==BluetoothDevice.ACTION_FOUND){
-                val d=if(Build.VERSION.SDK_INT>=33)i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE,BluetoothDevice::class.java) else @Suppress("DEPRECATION") i?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                val d:BluetoothDevice? = if(Build.VERSION.SDK_INT>=33) i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE,BluetoothDevice::class.java) else i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                 if(d!=null){found[d.address]=d;devices=found.values.toList()}
             }else if(i?.action==BluetoothAdapter.ACTION_DISCOVERY_FINISHED) discovering=false
         }
