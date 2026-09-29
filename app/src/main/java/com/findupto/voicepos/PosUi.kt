@@ -129,9 +129,10 @@ fun Analytics(sales:List<Sale>,expenses:List<Expense>,cash:Double,filter:Int,set
 }
 @Composable fun Metric(t:String,v:Double,i:ImageVector,m:Modifier){Card(m,shape=RoundedCornerShape(22.dp)){Column(Modifier.padding(16.dp)){Icon(i,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.height(10.dp));Text(t,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(money(v),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}}}
 @Composable fun SalesChart(sales:List<Sale>){
+    val barColor=MaterialTheme.colorScheme.primary
     val vals=(0..6).map{d->val day=Calendar.getInstance().apply{add(Calendar.DAY_OF_YEAR,-d)};sales.filter{val c=Calendar.getInstance().apply{timeInMillis=it.time};c.get(Calendar.YEAR)==day.get(Calendar.YEAR)&&c.get(Calendar.DAY_OF_YEAR)==day.get(Calendar.DAY_OF_YEAR)}.sumOf{it.total}}.reversed()
     val mx=maxOf(1.0,vals.maxOrNull()?:1.0)
-    Canvas(Modifier.fillMaxWidth().height(150.dp)){val gap=size.width/7f;vals.forEachIndexed{i,v->val h=(v/mx*(size.height-15)).toFloat();drawLine(MaterialTheme.colorScheme.primary,androidx.compose.ui.geometry.Offset(i*gap+gap/2,size.height-4),androidx.compose.ui.geometry.Offset(i*gap+gap/2,size.height-4-h),strokeWidth=gap*.48f,cap=StrokeCap.Round)}}
+    Canvas(Modifier.fillMaxWidth().height(150.dp)){val gap=size.width/7f;vals.forEachIndexed{i,v->val h=(v/mx*(size.height-15)).toFloat();drawLine(barColor,androidx.compose.ui.geometry.Offset(i*gap+gap/2,size.height-4),androidx.compose.ui.geometry.Offset(i*gap+gap/2,size.height-4-h),strokeWidth=gap*.48f,cap=StrokeCap.Round)}}
 }
 
 @Composable
