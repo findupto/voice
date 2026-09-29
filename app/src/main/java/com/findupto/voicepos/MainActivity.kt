@@ -10,6 +10,7 @@ import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
@@ -73,7 +74,7 @@ class MainActivity:ComponentActivity(){
  var tab by remember{mutableIntStateOf(0)};var cart by remember{mutableStateOf(emptyList<SaleItem>())};var cash by remember{mutableStateOf(store.cash())};var opening by remember{mutableStateOf(!store.hasOpeningCash())};var tick by remember{mutableIntStateOf(0)};var expense by remember{mutableStateOf(false)};var settings by remember{mutableStateOf(false)}
  var expName by remember{mutableStateOf("")};var expAmt by remember{mutableStateOf("")}
  val sales=remember(tick){store.sales()};val exps=remember(tick){store.expenses()}
- LaunchedEffect(heard){if(heard.isNotBlank()){cart=parseVoice(heard,cart);if(heard.lowercase().contains("complete sale")){val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());store.addSale(s);cash+=s.total;store.setCash(cash);printer.print(receiptBytes(store.company(),s,logoEscPosBytes(this@receiptContext)));cart=emptyList();tick++};clear()}}
+ LaunchedEffect(heard){if(heard.isNotBlank()){cart=parseVoice(heard,cart);if(heard.lowercase().contains("complete sale")){val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());store.addSale(s);cash+=s.total;store.setCash(cash);printer.print(receiptBytes(store.company(),s));cart=emptyList();tick++};clear()}}
  Scaffold(topBar={TopAppBar(title={Text("Voice POS")},actions={IconButton({settings=true}){Icon(Icons.Default.Settings,"Settings")}})},bottomBar={NavigationBar{val ns=listOf("Sale","Sales","Expenses","Reports");val isx=listOf(Icons.Default.PointOfSale,Icons.Default.ReceiptLong,Icons.Default.Payments,Icons.Default.BarChart);ns.forEachIndexed{i,n->NavigationBarItem(tab==i,{tab=i},{Icon(isx[i],n)},label={Text(n)})}}}){p->
   Column(Modifier.fillMaxSize().padding(p).padding(16.dp)){when(tab){0->SaleScreen(cart,{cart=it},listen,store.company(),printer);1->SalesScreen(sales,store.company(),printer);2->ExpensesScreen(exps){expense=true};3->ReportsScreen(sales.sumOf{it.total},exps.sumOf{it.amount},cash)}}
  }
@@ -106,4 +107,4 @@ fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(
 
 fun receiptBytes(company:String,s:Sale,logoBytes:ByteArray?=null):ByteArray{val out=java.io.ByteArrayOutputStream();fun w(x:String){out.write(x.toByteArray(Charsets.UTF_8))};out.write(byteArrayOf(0x1B,0x40));out.write(byteArrayOf(0x1B,0x61,0x01));if(logoBytes!=null)out.write(logoBytes);w(company+"\n");w("SALE #"+s.id+"\n");w(date(s.time)+"\n");out.write(byteArrayOf(0x1B,0x61,0x00));w("--------------------------------\n");s.items.forEach{w("${it.qty} x ${it.name}\n");w("    ${money(it.total)}\n")};w("--------------------------------\n");w("TOTAL: "+money(s.total)+"\n\n\n");return out.toByteArray()}
 
-fun logoEscPosBytes(ctx:Context):ByteArray? = null
+
