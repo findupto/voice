@@ -1,4 +1,5 @@
 name: Build Android APK
+# Build after menu CSV and offline voice fixes
 
 on:
   push:
