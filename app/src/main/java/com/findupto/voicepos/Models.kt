@@ -9,9 +9,9 @@ data class PendingSale(val id: Long, val items: List<SaleItem>, val time: Long) 
 }
 data class Expense(val id: Long, val title: String, val category: String, val amount: Double, val time: Long)
 data class CompanyProfile(
-    val name: String = "My Restaurant",
-    val address: String = "",
-    val phone: String = "",
+    val name: String = "The Slice of Heaven",
+    val address: String = "Old Utility Store near Police Line\nKhansar Road Bhakkar Punjab\nPakistan",
+    val phone: String = "0332 1872929, 0310 3685151",
     val footer: String = "Thank you for your visit"
 )
 enum class ReceiptTheme { CLASSIC, MODERN, COMPACT, RESTAURANT }
