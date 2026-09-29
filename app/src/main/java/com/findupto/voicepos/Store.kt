@@ -10,12 +10,17 @@ class Store(context: Context) {
     fun hasOpeningCash() = p.getBoolean("opening", false)
     fun setOpeningCash(v: Double) { setCash(v); p.edit().putBoolean("opening", true).apply() }
 
-    fun profile() = CompanyProfile(
-        p.getString("name", "The Slice of Heaven") ?: "The Slice of Heaven",
-        p.getString("address", "Old Utility Store near Police Line\nKhansar Road Bhakkar Punjab\nPakistan") ?: "",
-        p.getString("phone", "0332 1872929, 0310 3685151") ?: "",
-        p.getString("footer", "Thank you for your visit") ?: "Thank you for your visit"
-    )
+    fun profile(): CompanyProfile {
+        val savedName = p.getString("name", null)
+        val savedAddress = p.getString("address", null)
+        val savedPhone = p.getString("phone", null)
+        return CompanyProfile(
+            savedName ?: "The Slice of Heaven",
+            savedAddress ?: "Old Utility Store near Police Line\nKhansar Road Bhakkar Punjab\nPakistan",
+            savedPhone ?: "0332 1872929, 0310 3685151",
+            p.getString("footer", "Thank you for your visit") ?: "Thank you for your visit"
+        )
+    }
 
     fun saveProfile(x: CompanyProfile) = p.edit()
         .putString("name", x.name)
@@ -35,7 +40,7 @@ class Store(context: Context) {
     fun setKitchenPrinterAddress(v: String) = p.edit().putString("kitchen_printer", v).apply()
 
     private fun encodeItems(items: List<SaleItem>) = items.joinToString("|") {
-        "\${it.name.replace("~", " ").replace("|", " ")}^\${it.qty}^\${it.price}"
+        "${it.name.replace("~", " ").replace("|", " ")}^${it.qty}^${it.price}"
     }
 
     private fun decodeItems(raw: String): List<SaleItem> =
@@ -56,7 +61,7 @@ class Store(context: Context) {
 
     fun addSale(s: Sale) {
         val raw = (sales() + s).joinToString("\n") {
-            "\${it.id}~\${encodeItems(it.items)}~\${it.total}~\${it.time}"
+            "${it.id}~${encodeItems(it.items)}~${it.total}~${it.time}"
         }
         p.edit().putString("sales", raw).apply()
     }
@@ -71,7 +76,7 @@ class Store(context: Context) {
 
     private fun savePending(all: List<PendingSale>) {
         val raw = all.joinToString("\n") {
-            "\${it.id}~\${encodeItems(it.items)}~\${it.time}"
+            "${it.id}~${encodeItems(it.items)}~${it.time}"
         }
         p.edit().putString("pending", raw).apply()
     }
@@ -90,7 +95,7 @@ class Store(context: Context) {
 
     fun addExpense(e: Expense) {
         val raw = (expenses() + e).joinToString("\n") {
-            "\${it.id}~\${it.title.replace("~", " ")}~\${it.category.replace("~", " ")}~\${it.amount}~\${it.time}"
+            "${it.id}~${it.title.replace("~", " ")}~${it.category.replace("~", " ")}~${it.amount}~${it.time}"
         }
         p.edit().putString("expenses", raw).apply()
     }
