@@ -29,10 +29,7 @@ class Store(context: Context) {
         .putString("footer", x.footer)
         .apply()
 
-    fun theme() = runCatching {
-        ReceiptTheme.valueOf(p.getString("theme", "MODERN")!!)
-    }.getOrDefault(ReceiptTheme.MODERN)
-
+    fun theme() = runCatching { ReceiptTheme.valueOf(p.getString("theme", "MODERN")!!) }.getOrDefault(ReceiptTheme.MODERN)
     fun setTheme(t: ReceiptTheme) = p.edit().putString("theme", t.name).apply()
     fun customerPrinterAddress() = p.getString("customer_printer", "") ?: ""
     fun kitchenPrinterAddress() = p.getString("kitchen_printer", "") ?: ""
@@ -45,39 +42,24 @@ class Store(context: Context) {
 
     private fun decodeItems(raw: String): List<SaleItem> =
         raw.split("|").filter { it.isNotBlank() }.mapNotNull { q ->
-            runCatching {
-                val b = q.split("^")
-                SaleItem(b[0], b[1].toInt(), b[2].toDouble())
-            }.getOrNull()
+            runCatching { val b = q.split("^"); SaleItem(b[0], b[1].toInt(), b[2].toDouble()) }.getOrNull()
         }
 
-    fun sales(): List<Sale> =
-        p.getString("sales", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-            runCatching {
-                val a = line.split("~")
-                Sale(a[0].toLong(), decodeItems(a[1]), a[2].toDouble(), a[3].toLong())
-            }.getOrNull()
-        }
+    fun sales(): List<Sale> = p.getString("sales", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
+        runCatching { val a = line.split("~"); Sale(a[0].toLong(), decodeItems(a[1]), a[2].toDouble(), a[3].toLong()) }.getOrNull()
+    }
 
     fun addSale(s: Sale) {
-        val raw = (sales() + s).joinToString("\n") {
-            "${it.id}~${encodeItems(it.items)}~${it.total}~${it.time}"
-        }
+        val raw = (sales() + s).joinToString("\n") { "${it.id}~${encodeItems(it.items)}~${it.total}~${it.time}" }
         p.edit().putString("sales", raw).apply()
     }
 
-    fun pending(): List<PendingSale> =
-        p.getString("pending", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-            runCatching {
-                val a = line.split("~")
-                PendingSale(a[0].toLong(), decodeItems(a[1]), a[2].toLong())
-            }.getOrNull()
-        }
+    fun pending(): List<PendingSale> = p.getString("pending", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
+        runCatching { val a = line.split("~"); PendingSale(a[0].toLong(), decodeItems(a[1]), a[2].toLong()) }.getOrNull()
+    }
 
     private fun savePending(all: List<PendingSale>) {
-        val raw = all.joinToString("\n") {
-            "${it.id}~${encodeItems(it.items)}~${it.time}"
-        }
+        val raw = all.joinToString("\n") { "${it.id}~${encodeItems(it.items)}~${it.time}" }
         p.edit().putString("pending", raw).apply()
     }
 
@@ -85,31 +67,29 @@ class Store(context: Context) {
     fun replacePending(s: PendingSale) = savePending(pending().map { if (it.id == s.id) s else it })
     fun removePending(id: Long) = savePending(pending().filterNot { it.id == id })
 
-    fun menu(): List<MenuItem> =
-        p.getString("menu", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-            runCatching { val a = line.split("^"); MenuItem(a[0].toLong(), a[1], a[2].toDouble()) }.getOrNull()
-        }
+    fun menu(): List<MenuItem> = p.getString("menu", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
+        runCatching {
+            val a = line.split("^")
+            MenuItem(a[0].toLong(), a[1], a[2].toDouble(), a.getOrNull(3) ?: "", a.getOrNull(4) ?: "")
+        }.getOrNull()
+    }
 
     fun saveMenu(items: List<MenuItem>) {
-        val raw = items.joinToString("\n") { item -> "${item.id}^${item.name.replace("^", " ")}^${item.price}" }
+        val raw = items.joinToString("\n") { item ->
+            "${item.id}^${item.name.replace("^", " ")}^${item.price}^${item.variant.replace("^", " ")}^${item.size.replace("^", " ")}"
+        }
         p.edit().putString("menu", raw).apply()
     }
 
     fun addMenuItem(item: MenuItem) = saveMenu(menu() + item)
     fun removeMenuItem(id: Long) = saveMenu(menu().filterNot { it.id == id })
 
-    fun expenses(): List<Expense> =
-        p.getString("expenses", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-            runCatching {
-                val a = line.split("~")
-                Expense(a[0].toLong(), a[1], a[2], a[3].toDouble(), a[4].toLong())
-            }.getOrNull()
-        }
+    fun expenses(): List<Expense> = p.getString("expenses", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
+        runCatching { val a = line.split("~"); Expense(a[0].toLong(), a[1], a[2], a[3].toDouble(), a[4].toLong()) }.getOrNull()
+    }
 
     fun addExpense(e: Expense) {
-        val raw = (expenses() + e).joinToString("\n") {
-            "${it.id}~${it.title.replace("~", " ")}~${it.category.replace("~", " ")}~${it.amount}~${it.time}"
-        }
+        val raw = (expenses() + e).joinToString("\n") { "${it.id}~${it.title.replace("~", " ")}~${it.category.replace("~", " ")}~${it.amount}~${it.time}" }
         p.edit().putString("expenses", raw).apply()
     }
 }
