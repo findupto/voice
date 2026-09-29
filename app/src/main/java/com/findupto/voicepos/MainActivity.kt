@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.graphics.Bitmap
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -73,26 +74,26 @@ class MainActivity:ComponentActivity(){
 @Composable fun App(store:Store,printer:PrinterManager,listen:()->Unit,heard:String,clear:()->Unit){
  var tab by remember{mutableIntStateOf(0)};var cart by remember{mutableStateOf(emptyList<SaleItem>())};var cash by remember{mutableStateOf(store.cash())};var opening by remember{mutableStateOf(!store.hasOpeningCash())};var tick by remember{mutableIntStateOf(0)};var expense by remember{mutableStateOf(false)};var settings by remember{mutableStateOf(false)}
  var expName by remember{mutableStateOf("")};var expAmt by remember{mutableStateOf("")}
- val sales=remember(tick){store.sales()};val exps=remember(tick){store.expenses()}
+ val sales=remember(tick){store.sales()};val exps=remember(tick){store.expenses()};val context=androidx.compose.ui.platform.LocalContext.current
  LaunchedEffect(heard){if(heard.isNotBlank()){cart=parseVoice(heard,cart);if(heard.lowercase().contains("complete sale")){val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());store.addSale(s);cash+=s.total;store.setCash(cash);printer.print(receiptBytes(store.company(),s));cart=emptyList();tick++};clear()}}
  Scaffold(topBar={TopAppBar(title={Text("Voice POS")},actions={IconButton({settings=true}){Icon(Icons.Default.Settings,"Settings")}})},bottomBar={NavigationBar{val ns=listOf("Sale","Sales","Expenses","Reports");val isx=listOf(Icons.Default.PointOfSale,Icons.Default.ReceiptLong,Icons.Default.Payments,Icons.Default.BarChart);ns.forEachIndexed{i,n->NavigationBarItem(tab==i,{tab=i},{Icon(isx[i],n)},label={Text(n)})}}}){p->
-  Column(Modifier.fillMaxSize().padding(p).padding(16.dp)){when(tab){0->SaleScreen(cart,{cart=it},listen,store.company(),printer);1->SalesScreen(sales,store.company(),printer);2->ExpensesScreen(exps){expense=true};3->ReportsScreen(sales.sumOf{it.total},exps.sumOf{it.amount},cash)}}
+  Column(Modifier.fillMaxSize().padding(p).padding(16.dp)){when(tab){0->SaleScreen(cart,{cart=it},listen,store.company(),printer,context);1->SalesScreen(sales,store.company(),printer,context);2->ExpensesScreen(exps){expense=true};3->ReportsScreen(sales.sumOf{it.total},exps.sumOf{it.amount},cash)}}
  }
  if(expense)AlertDialog(onDismissRequest={expense=false},title={Text("Add Expense")},text={Column{OutlinedTextField(expName,{expName=it},label={Text("Description")});OutlinedTextField(expAmt,{expAmt=it},label={Text("Amount")})}},confirmButton={TextButton({val a=expAmt.toDoubleOrNull();if(a!=null){store.addExpense(Expense(System.currentTimeMillis(),expName,a,System.currentTimeMillis()));cash-=a;store.setCash(cash);tick++};expense=false;expName="";expAmt=""}){Text("Save")}},dismissButton={TextButton({expense=false}){Text("Cancel")}})
  if(settings)SettingsDialog(store,printer){settings=false}
  if(opening)OpeningCashDialog(store){cash=it;opening=false}
 }
 
-@Composable fun SaleScreen(cart:List<SaleItem>,setCart:(List<SaleItem>)->Unit,listen:()->Unit,company:String,printer:PrinterManager){
+@Composable fun SaleScreen(cart:List<SaleItem>,setCart:(List<SaleItem>)->Unit,listen:()->Unit,company:String,printer:PrinterManager,context:Context){
  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())){
   Card(Modifier.fillMaxWidth().padding(vertical=10.dp)){Column(Modifier.padding(18.dp)){Text("Quick Sale",style=MaterialTheme.typography.titleLarge);Text(company,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(12.dp));Button(listen,Modifier.fillMaxWidth()){Icon(Icons.Default.Mic,null);Spacer(Modifier.width(8.dp));Text("Speak Sale")};Spacer(Modifier.height(10.dp))
    cart.forEach{x->ListItem({Text(x.name)},supportingContent={Text("${x.qty} × ${money(x.price)}")},trailingContent={Text(money(x.total))})};HorizontalDivider();Row(Modifier.fillMaxWidth().padding(top=12.dp),Arrangement.SpaceBetween){Text("Total",style=MaterialTheme.typography.titleLarge);Text(money(cart.sumOf{it.total}),style=MaterialTheme.typography.titleLarge)}
-   Spacer(Modifier.height(10.dp));if(cart.isNotEmpty())Button({val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());printer.print(receiptBytes(company,s))}){Icon(Icons.Default.Print,null);Spacer(Modifier.width(6.dp));Text("Print Current Sale")};Spacer(Modifier.height(10.dp));Text("Say: “4 special shawarma price 200 each, 2 large chicken fajita price 1350 each…”",style=MaterialTheme.typography.bodySmall)
+   Spacer(Modifier.height(10.dp));if(cart.isNotEmpty())Button({val s=Sale(System.currentTimeMillis(),cart,cart.sumOf{it.total},System.currentTimeMillis());printer.print(receiptBytes(company,s,loadLogo(context, storeLogo(context))))}){Icon(Icons.Default.Print,null);Spacer(Modifier.width(6.dp));Text("Print Current Sale")};Spacer(Modifier.height(10.dp));Text("Say: “4 special shawarma price 200 each, 2 large chicken fajita price 1350 each…”",style=MaterialTheme.typography.bodySmall)
   }
  }
 }
 
-@Composable fun SalesScreen(sales:List<Sale>,company:String,printer:PrinterManager){LazyColumn{items(sales.reversed()){s->Card(Modifier.fillMaxWidth().padding(vertical=5.dp)){Column(Modifier.padding(14.dp)){Text("${s.id}",style=MaterialTheme.typography.labelSmall);Text(money(s.total),style=MaterialTheme.typography.titleLarge);Text(s.items.joinToString(", "){"${it.qty}× ${it.name}"});Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween,Alignment.CenterVertically){Text(date(s.time),style=MaterialTheme.typography.bodySmall);TextButton({printer.print(receiptBytes(company,s))}){Text("Re-print")}}}}}}
+@Composable fun SalesScreen(sales:List<Sale>,company:String,printer:PrinterManager,context:Context){LazyColumn{items(sales.reversed()){s->Card(Modifier.fillMaxWidth().padding(vertical=5.dp)){Column(Modifier.padding(14.dp)){Text("${s.id}",style=MaterialTheme.typography.labelSmall);Text(money(s.total),style=MaterialTheme.typography.titleLarge);Text(s.items.joinToString(", "){"${it.qty}× ${it.name}"});Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween,Alignment.CenterVertically){Text(date(s.time),style=MaterialTheme.typography.bodySmall);TextButton({printer.print(receiptBytes(company,s,loadLogo(context, storeLogo(context))))}){Text("Re-print")}}}}}}
 @Composable fun ExpensesScreen(es:List<Expense>,add:()->Unit){Row(Modifier.fillMaxWidth().padding(vertical=10.dp),Arrangement.SpaceBetween,Alignment.CenterVertically){Text("Expenses",style=MaterialTheme.typography.headlineSmall);Button(add){Text("Add")}};LazyColumn{items(es.reversed()){e->ListItem({Text(e.title)},supportingContent={Text(date(e.time))},trailingContent={Text(money(e.amount))})}}}
 @Composable fun ReportsScreen(s:Double,e:Double,c:Double){Column(Modifier.verticalScroll(rememberScrollState())){Text("Reports",style=MaterialTheme.typography.headlineSmall);Metric("Total Sales",s);Metric("Total Expenses",e);Metric("Cash In Hand",c);Metric("Net",s-e)}}
 @Composable fun Metric(t:String,v:Double){Card(Modifier.fillMaxWidth().padding(vertical=5.dp)){Row(Modifier.fillMaxWidth().padding(18.dp),Arrangement.SpaceBetween){Text(t);Text(money(v),style=MaterialTheme.typography.titleLarge)}}}
@@ -108,3 +109,6 @@ fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(
 fun receiptBytes(company:String,s:Sale,logoBytes:ByteArray?=null):ByteArray{val out=java.io.ByteArrayOutputStream();fun w(x:String){out.write(x.toByteArray(Charsets.UTF_8))};out.write(byteArrayOf(0x1B,0x40));out.write(byteArrayOf(0x1B,0x61,0x01));if(logoBytes!=null)out.write(logoBytes);w(company+"\n");w("SALE #"+s.id+"\n");w(date(s.time)+"\n");out.write(byteArrayOf(0x1B,0x61,0x00));w("--------------------------------\n");s.items.forEach{w("${it.qty} x ${it.name}\n");w("    ${money(it.total)}\n")};w("--------------------------------\n");w("TOTAL: "+money(s.total)+"\n\n\n");return out.toByteArray()}
 
 
+
+fun storeLogo(context:Context)=context.getSharedPreferences("pos",0).getString("logo","")?:""
+fun loadLogo(context:Context,uri:String):ByteArray?{if(uri.isBlank())return null;return runCatching{val b=BitmapFactory.decodeStream(context.contentResolver.openInputStream(Uri.parse(uri)))?:return null;val w=384;val h=(b.height.toFloat()*w/b.width).toInt().coerceAtMost(160);val scaled=Bitmap.createScaledBitmap(b,w,h,true);val rowBytes=(w+7)/8;val data=ByteArray(rowBytes*h);for(y in 0 until h)for(x in 0 until w){val p=scaled.getPixel(x,y);val gray=(android.graphics.Color.red(p)*299+android.graphics.Color.green(p)*587+android.graphics.Color.blue(p)*114)/1000;if(gray<160)data[y*rowBytes+x/8]=(data[y*rowBytes+x/8].toInt() or (0x80 shr (x%8))).toByte()};java.io.ByteArrayOutputStream().apply{write(byteArrayOf(0x1D,0x76,0x30,0x00,(rowBytes and 255).toByte(),(rowBytes shr 8).toByte(),(h and 255).toByte(),(h shr 8).toByte()));write(data);write(byteArrayOf(0x0A))}.toByteArray()}.getOrNull()}
