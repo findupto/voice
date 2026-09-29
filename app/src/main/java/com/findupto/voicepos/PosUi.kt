@@ -14,19 +14,31 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
 
 @Composable
 fun VoicePosTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF9B8CFF), secondary = Color(0xFF42D6A4)), content = content)
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = androidx.compose.ui.graphics.Color(0xFF9B8CFF),
+            secondary = androidx.compose.ui.graphics.Color(0xFF42D6A4)
+        ),
+        content = content
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () -> Unit, listen: () -> Unit) {
+fun PosApp(
+    store: Store,
+    printer: PrinterManager,
+    heard: String,
+    voiceStatus: String,
+    clearHeard: () -> Unit,
+    listen: () -> Unit
+) {
     var tab by remember { mutableIntStateOf(0) }
     var cart by remember { mutableStateOf(emptyList<SaleItem>()) }
     var cash by remember { mutableStateOf(store.cash()) }
@@ -36,6 +48,7 @@ fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () 
     var settings by remember { mutableStateOf(false) }
     var expense by remember { mutableStateOf(false) }
     var opening by remember { mutableStateOf(!store.hasOpeningCash()) }
+    var selectedSale by remember { mutableStateOf<Sale?>(null) }
 
     val profile = remember(tick) { store.profile() }
     val sales = remember(tick) { store.sales() }
@@ -44,16 +57,15 @@ fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () 
 
     LaunchedEffect(heard) {
         if (heard.isNotBlank()) {
-            val commands = VoiceCommandEngine.parse(heard)
-            commands.forEach { command ->
+            VoiceCommandEngine.parse(heard).forEach { command ->
                 when (command) {
                     is VoiceCommand.Add -> {
                         val index = cart.indexOfFirst { it.name.equals(command.item.name, true) && it.price == command.item.price }
                         cart = if (index >= 0) {
-                            cart.toMutableList().also { list -> list[index] = list[index].copy(qty = list[index].qty + command.item.qty) }
-                        } else {
-                            cart + command.item
-                        }
+                            cart.toMutableList().also { list ->
+                                list[index] = list[index].copy(qty = list[index].qty + command.item.qty)
+                            }
+                        } else cart + command.item
                     }
                     VoiceCommand.Clear -> cart = emptyList()
                     VoiceCommand.Sales -> tab = 2
@@ -77,7 +89,7 @@ fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () 
         }
     }
 
-    fun sendToKitchen() {
+    fun sendOrder() {
         if (cart.isEmpty()) return
         val order = PendingSale(System.currentTimeMillis(), cart, System.currentTimeMillis())
         store.addPending(order)
@@ -99,11 +111,15 @@ fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(profile.name, fontWeight = FontWeight.Bold)
-                    Text("PREMIUM POS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                }},
-                actions = { IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, null) } }
+                title = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(profile.name.ifBlank { "The Slice of Heaven" }, fontWeight = FontWeight.Bold)
+                        Text("VOICE POS • PREMIUM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, "Settings") }
+                }
             )
         },
         bottomBar = {
@@ -111,26 +127,37 @@ fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () 
                 val names = listOf("Sale", "Kitchen", "Sales", "Expenses", "Analytics")
                 val icons = listOf(Icons.Default.PointOfSale, Icons.Default.Restaurant, Icons.Default.ReceiptLong, Icons.Default.Payments, Icons.Default.Insights)
                 names.forEachIndexed { index, name ->
-                    NavigationBarItem(tab == index, { tab = index }, icon = { Icon(icons[index], null) }, label = { Text(name) })
+                    NavigationBarItem(tab == index, { tab = index }, icon = { Icon(icons[index], name) }, label = { Text(name) })
                 }
             }
         },
-        floatingActionButton = { FloatingActionButton(onClick = listen, shape = CircleShape) { Icon(Icons.Default.Mic, null) } }
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = listen,
+                icon = { Icon(Icons.Default.Mic, "Voice") },
+                text = { Text("VOICE") },
+                shape = CircleShape
+            )
+        }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                0 -> QuickSale(cart, ::sendToKitchen, listen, { cart = emptyList() }) { item, delta ->
+                0 -> QuickSale(cart, voiceStatus, ::sendOrder, listen, { cart = emptyList() }) { item, delta ->
                     cart = cart.map { if (it == item) it.copy(qty = (it.qty + delta).coerceAtLeast(0)) else it }.filter { it.qty > 0 }
                 }
                 1 -> KitchenQueue(pending, profile, printer, ::pay) { editing = it }
-                2 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, profile, printer)
+                2 -> SalesPage(sales.filter { inRange(it.time, filter) }, filter, { filter = it }, { selectedSale = it })
                 3 -> ExpensesPage(expenses.filter { inRange(it.time, filter) }, filter, { filter = it }) { expense = true }
                 4 -> Analytics(sales.filter { inRange(it.time, filter) }, expenses.filter { inRange(it.time, filter) }, cash, filter, { filter = it })
             }
         }
     }
 
-    if (opening) OpeningCash { cash = it; opening = false }
+    if (opening) OpeningCash {
+        cash = it
+        store.setOpeningCash(it)
+        opening = false
+    }
     if (expense) ExpenseDialog { name, category, amount ->
         store.addExpense(Expense(System.currentTimeMillis(), name, category, amount, System.currentTimeMillis()))
         cash -= amount
@@ -139,33 +166,66 @@ fun PosApp(store: Store, printer: PrinterManager, heard: String, clearHeard: () 
         expense = false
     }
     if (settings) SettingsPage(store, printer) { settings = false; tick++ }
-    editing?.let { order ->
-        EditDialog(order, { updated -> store.replacePending(updated); editing = null; tick++ }, { editing = null })
-    }
+    editing?.let { order -> EditDialog(order, { updated -> store.replacePending(updated); editing = null; tick++ }, { editing = null }) }
+    selectedSale?.let { sale -> SaleDetailDialog(sale, profile, printer, store.theme()) { selectedSale = null } }
 }
 
 @Composable
-private fun QuickSale(cart: List<SaleItem>, send: () -> Unit, listen: () -> Unit, clear: () -> Unit, changeQty: (SaleItem, Int) -> Unit) {
+private fun QuickSale(
+    cart: List<SaleItem>,
+    voiceStatus: String,
+    send: () -> Unit,
+    listen: () -> Unit,
+    clear: () -> Unit,
+    changeQty: (SaleItem, Int) -> Unit
+) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Voice checkout", fontWeight = FontWeight.Bold)
+                        Text("Offline • multi-item orders", style = MaterialTheme.typography.bodySmall)
+                    }
+                    IconButton(onClick = listen) { Icon(Icons.Default.MicNone, "Listen") }
+                }
+                AssistChip(onClick = listen, label = { Text(voiceStatus) }, leadingIcon = { Icon(Icons.Default.WifiOff, null) })
+                Text("Try: 2 shawarma price 300 each and 1 fries price 150 each", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("Voice checkout", fontWeight = FontWeight.Bold)
-                Text("Kitchen first • payment later • editable")
-                IconButton(onClick = listen) { Icon(Icons.Default.Mic, null) }
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Text("Current order", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (cart.isNotEmpty()) TextButton(onClick = clear) { Text("Clear") }
+                }
                 if (cart.isEmpty()) {
-                    EmptyState(Icons.Default.Mic, "Ready for voice", "Say: 2 shawarma price 300 each, 1 fries price 150 each")
+                    EmptyState(Icons.Default.ShoppingCart, "No items yet", "Use the voice button to add multiple items.")
                 } else {
                     cart.forEach { item ->
-                        Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text(item.name); Text(item.qty.toString() + " × " + money(item.price)) }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(item.name, fontWeight = FontWeight.SemiBold)
+                                Text(item.qty.toString() + " × " + money(item.price), style = MaterialTheme.typography.bodySmall)
+                            }
                             IconButton(onClick = { changeQty(item, -1) }) { Icon(Icons.Default.RemoveCircleOutline, null) }
-                            Text(money(item.total))
+                            Text(money(item.total), fontWeight = FontWeight.Bold)
                             IconButton(onClick = { changeQty(item, 1) }) { Icon(Icons.Default.AddCircleOutline, null) }
                         }
                     }
                     HorizontalDivider()
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) { Text("TOTAL", fontWeight = FontWeight.Bold); Text(money(cart.sumOf { it.total }), fontWeight = FontWeight.Bold) }
-                    Button(onClick = send, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Restaurant, null); Spacer(Modifier.width(6.dp)); Text("PRINT KITCHEN & HOLD PAYMENT") }
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), Arrangement.SpaceBetween) {
+                        Text("TOTAL", fontWeight = FontWeight.Bold)
+                        Text(money(cart.sumOf { it.total }), fontWeight = FontWeight.Bold)
+                    }
+                    Button(onClick = send, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        Icon(Icons.Default.Restaurant, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("PRINT KITCHEN & HOLD PAYMENT")
+                    }
                 }
             }
         }
@@ -176,15 +236,18 @@ private fun QuickSale(cart: List<SaleItem>, send: () -> Unit, listen: () -> Unit
 private fun KitchenQueue(queue: List<PendingSale>, profile: CompanyProfile, printer: PrinterManager, pay: (PendingSale) -> Unit, edit: (PendingSale) -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Column { Text("Kitchen Queue", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(queue.size.toString() + " unpaid") }
-            Button(onClick = { queue.forEach { printer.printKitchen(kitchenReceipt(it, profile, ReceiptTheme.MODERN)) } }, enabled = queue.isNotEmpty()) { Text("Print all one-by-one") }
+            Column {
+                Text("Kitchen Queue", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(queue.size.toString() + " unpaid orders")
+            }
+            Button(onClick = { queue.forEach { printer.printKitchen(kitchenReceipt(it, profile, ReceiptTheme.MODERN)) } }, enabled = queue.isNotEmpty()) { Text("Print all") }
         }
         LazyColumn {
             items(queue) { order ->
-                Card(Modifier.fillMaxWidth().padding(5.dp).clickable { edit(order) }) {
+                Card(Modifier.fillMaxWidth().padding(vertical = 5.dp).clickable { edit(order) }) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Restaurant, null)
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                             Text("#" + order.id, fontWeight = FontWeight.Bold)
                             Text(order.items.joinToString(", ") { it.qty.toString() + "× " + it.name })
                             Text(money(order.total))
@@ -204,12 +267,12 @@ private fun EditDialog(order: PendingSale, save: (PendingSale) -> Unit, close: (
     var price by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = close,
-        title = { Text("Edit kitchen slip #" + order.id) },
+        title = { Text("Edit order #" + order.id) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 items.forEach { item ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text(item.name); Text(item.qty.toString() + " × " + money(item.price)) }
+                        Column(Modifier.weight(1f)) { Text(item.name); Text(item.qty.toString() + " × " + money(item.price), style = MaterialTheme.typography.bodySmall) }
                         IconButton(onClick = { items = items.map { x -> if (x == item) x.copy(qty = x.qty - 1) else x }.filter { it.qty > 0 } }) { Icon(Icons.Default.Remove, null) }
                     }
                 }
@@ -218,22 +281,33 @@ private fun EditDialog(order: PendingSale, save: (PendingSale) -> Unit, close: (
                 OutlinedTextField(price, { price = it }, label = { Text("Price") })
             }
         },
-        confirmButton = { TextButton(onClick = { val value = price.toDoubleOrNull(); save(order.copy(items = if (name.isNotBlank() && value != null) items + SaleItem(name, 1, value) else items)) }) { Text("Save") } },
+        confirmButton = {
+            TextButton(onClick = {
+                val value = price.toDoubleOrNull()
+                save(order.copy(items = if (name.isNotBlank() && value != null) items + SaleItem(name, 1, value) else items))
+            }) { Text("Save") }
+        },
         dismissButton = { TextButton(onClick = close) { Text("Cancel") } }
     )
 }
 
 @Composable
-private fun SalesPage(sales: List<Sale>, filter: Int, setFilter: (Int) -> Unit, profile: CompanyProfile, printer: PrinterManager) {
+private fun SalesPage(sales: List<Sale>, filter: Int, setFilter: (Int) -> Unit, open: (Sale) -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Paid Sales", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         FilterRow(filter, setFilter)
+        if (sales.isEmpty()) EmptyState(Icons.Default.ReceiptLong, "No sales", "Completed receipts will appear here.")
         LazyColumn {
             items(sales.reversed()) { sale ->
-                Card(Modifier.fillMaxWidth().padding(4.dp)) {
+                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { open(sale) }) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text("#" + sale.id, fontWeight = FontWeight.Bold); Text(sale.items.joinToString(", ") { it.qty.toString() + "× " + it.name }); Text(money(sale.total)) }
-                        TextButton(onClick = { printer.printCustomer(customerReceipt(sale, profile, ReceiptTheme.MODERN)) }) { Text("Re-print") }
+                        Icon(Icons.Default.ReceiptLong, null)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text("Receipt #" + sale.id, fontWeight = FontWeight.Bold)
+                            Text(sale.items.sumOf { it.qty }.toString() + " items • " + date(sale.time), style = MaterialTheme.typography.bodySmall)
+                            Text(money(sale.total), fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(onClick = { open(sale) }) { Text("DETAILS") }
                     }
                 }
             }
@@ -241,52 +315,173 @@ private fun SalesPage(sales: List<Sale>, filter: Int, setFilter: (Int) -> Unit, 
     }
 }
 
-@Composable private fun ExpensesPage(expenses: List<Expense>, filter: Int, setFilter: (Int) -> Unit, add: () -> Unit) {
+@Composable
+private fun SaleDetailDialog(sale: Sale, profile: CompanyProfile, printer: PrinterManager, theme: ReceiptTheme, close: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Receipt #" + sale.id) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(date(sale.time), style = MaterialTheme.typography.bodySmall)
+                sale.items.forEach { item ->
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, fontWeight = FontWeight.SemiBold)
+                            Text(item.qty.toString() + " × " + money(item.price), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(money(item.total), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Text("TOTAL", fontWeight = FontWeight.Bold)
+                    Text(money(sale.total), fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { printer.printCustomer(customerReceipt(sale, profile, theme)) }) { Text("RE-PRINT") } },
+        dismissButton = { TextButton(onClick = close) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun ExpensesPage(expenses: List<Expense>, filter: Int, setFilter: (Int) -> Unit, add: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("Expenses", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Button(onClick = add) { Text("Add") } }
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Text("Expenses", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Button(onClick = add) { Text("Add") }
+        }
         FilterRow(filter, setFilter)
-        LazyColumn { items(expenses.reversed()) { e -> ListItem(headlineContent = { Text(e.title) }, supportingContent = { Text(e.category + " • " + date(e.time)) }, trailingContent = { Text(money(e.amount)) }) } }
+        if (expenses.isEmpty()) EmptyState(Icons.Default.Payments, "No expenses", "Track shop expenses here.")
+        LazyColumn {
+            items(expenses.reversed()) {
+                ListItem(
+                    headlineContent = { Text(it.title) },
+                    supportingContent = { Text(it.category + " • " + date(it.time)) },
+                    trailingContent = { Text(money(it.amount), fontWeight = FontWeight.Bold) }
+                )
+            }
+        }
     }
 }
 
-@Composable private fun FilterRow(filter: Int, setFilter: (Int) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) { listOf("Today", "7 days", "30 days", "All").forEachIndexed { i, n -> FilterChip(filter == i, { setFilter(i) }, label = { Text(n) }) } }
+@Composable
+private fun FilterRow(filter: Int, setFilter: (Int) -> Unit) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        listOf("Today", "7 days", "30 days", "All").forEachIndexed { i, n ->
+            FilterChip(filter == i, { setFilter(i) }, label = { Text(n) })
+        }
+    }
 }
 
-@Composable private fun Analytics(sales: List<Sale>, expenses: List<Expense>, cash: Double, filter: Int, setFilter: (Int) -> Unit) {
-    val salesValue = sales.sumOf { it.total }; val expenseValue = expenses.sumOf { it.amount }
-    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) { Text("Analytics", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); FilterRow(filter, setFilter); Metric("Sales", salesValue, Icons.Default.TrendingUp); Metric("Expenses", expenseValue, Icons.Default.TrendingDown); Metric("Cash", cash, Icons.Default.AccountBalanceWallet); Metric("Net", salesValue - expenseValue, Icons.Default.AccountBalance) }
+@Composable
+private fun Analytics(sales: List<Sale>, expenses: List<Expense>, cash: Double, filter: Int, setFilter: (Int) -> Unit) {
+    val salesValue = sales.sumOf { it.total }
+    val expenseValue = expenses.sumOf { it.amount }
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+        Text("Analytics", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        FilterRow(filter, setFilter)
+        Metric("Sales", salesValue, Icons.Default.TrendingUp)
+        Metric("Expenses", expenseValue, Icons.Default.TrendingDown)
+        Metric("Cash", cash, Icons.Default.AccountBalanceWallet)
+        Metric("Net", salesValue - expenseValue, Icons.Default.AccountBalance)
+    }
 }
 
-@Composable private fun Metric(title: String, value: Double, icon: ImageVector) { Card(Modifier.fillMaxWidth().padding(5.dp)) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null); Spacer(Modifier.width(12.dp)); Text(title, Modifier.weight(1f)); Text(money(value), fontWeight = FontWeight.Bold) } } }
-@Composable private fun EmptyState(icon: ImageVector, title: String, body: String) { Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, Modifier.size(40.dp)); Text(title, fontWeight = FontWeight.Bold); Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-@Composable private fun OpeningCash(done: (Double) -> Unit) { var value by remember { mutableStateOf("") }; AlertDialog(onDismissRequest = {}, title = { Text("Opening Cash") }, text = { OutlinedTextField(value, { value = it }, label = { Text("Cash in hand") }) }, confirmButton = { TextButton(onClick = { done(value.toDoubleOrNull() ?: 0.0) }) { Text("Continue") } }) }
-@Composable private fun ExpenseDialog(done: (String, String, Double) -> Unit) { var name by remember { mutableStateOf("") }; var category by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; AlertDialog(onDismissRequest = {}, title = { Text("Add Expense") }, text = { Column { OutlinedTextField(name, { name = it }, label = { Text("Description") }); OutlinedTextField(category, { category = it }, label = { Text("Category") }); OutlinedTextField(amount, { amount = it }, label = { Text("Amount") }) } }, confirmButton = { TextButton(onClick = { amount.toDoubleOrNull()?.let { done(name, category, it) } }) { Text("Save") } }, dismissButton = { TextButton(onClick = {}) { Text("Close") } }) }
+@Composable
+private fun Metric(title: String, value: Double, icon: ImageVector) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null)
+            Spacer(Modifier.width(12.dp))
+            Text(title, Modifier.weight(1f))
+            Text(money(value), fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(icon: ImageVector, title: String, body: String) {
+    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, Modifier.size(40.dp))
+        Text(title, fontWeight = FontWeight.Bold)
+        Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun OpeningCash(done: (Double) -> Unit) {
+    var value by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Opening Cash") },
+        text = { OutlinedTextField(value, { value = it }, label = { Text("Cash in hand") }) },
+        confirmButton = { TextButton(onClick = { done(value.toDoubleOrNull() ?: 0.0) }) { Text("Continue") } }
+    )
+}
+
+@Composable
+private fun ExpenseDialog(done: (String, String, Double) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Add Expense") },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, label = { Text("Description") })
+                OutlinedTextField(category, { category = it }, label = { Text("Category") })
+                OutlinedTextField(amount, { amount = it }, label = { Text("Amount") })
+            }
+        },
+        confirmButton = { TextButton(onClick = { amount.toDoubleOrNull()?.let { done(name, category, it) } }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = {}) { Text("Close") } }
+    )
+}
 
 @Composable
 private fun SettingsPage(store: Store, printer: PrinterManager, close: () -> Unit) {
-    var profile by remember { mutableStateOf(store.profile()) }; var theme by remember { mutableStateOf(store.theme()) }; var customer by remember { mutableStateOf(store.customerPrinterAddress()) }; var kitchen by remember { mutableStateOf(store.kitchenPrinterAddress()) }
-    AlertDialog(onDismissRequest = close, title = { Text("Premium Print Settings") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedTextField(profile.name, { profile = profile.copy(name = it) }, label = { Text("Slip header") })
-            OutlinedTextField(profile.address, { profile = profile.copy(address = it) }, label = { Text("Address") })
-            OutlinedTextField(profile.phone, { profile = profile.copy(phone = it) }, label = { Text("Phone") })
-            OutlinedTextField(profile.footer, { profile = profile.copy(footer = it) }, label = { Text("Slip footer") })
-            Text("Receipt style", fontWeight = FontWeight.Bold)
-            Row(Modifier.horizontalScroll(rememberScrollState())) { ReceiptTheme.values().forEach { t -> FilterChip(theme == t, { theme = t }, label = { Text(t.name) }) } }
-            Button(onClick = { printer.discover() }) { Text(if (printer.discovering) "Discovering..." else "Find Bluetooth printers") }
-            printer.devices.forEach { device ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(device.name ?: device.address, Modifier.weight(1f), maxLines = 1)
-                    TextButton(onClick = { customer = device.address }) { Text(if (customer == device.address) "Receipt ✓" else "Receipt") }
-                    TextButton(onClick = { kitchen = device.address }) { Text(if (kitchen == device.address) "Kitchen ✓" else "Kitchen") }
+    var profile by remember { mutableStateOf(store.profile()) }
+    var theme by remember { mutableStateOf(store.theme()) }
+    var customer by remember { mutableStateOf(store.customerPrinterAddress()) }
+    var kitchen by remember { mutableStateOf(store.kitchenPrinterAddress()) }
+
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Premium Print Settings") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Company", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(profile.name, { profile = profile.copy(name = it) }, label = { Text("Slip header") })
+                OutlinedTextField(profile.address, { profile = profile.copy(address = it) }, label = { Text("Address") }, minLines = 3)
+                OutlinedTextField(profile.phone, { profile = profile.copy(phone = it) }, label = { Text("Phone") })
+                OutlinedTextField(profile.footer, { profile = profile.copy(footer = it) }, label = { Text("Slip footer") })
+                Text("Receipt style", fontWeight = FontWeight.Bold)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    ReceiptTheme.values().forEach { t -> FilterChip(theme == t, { theme = t }, label = { Text(t.name) }) }
+                }
+                Text("Bluetooth printers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Button(onClick = { printer.discover() }) { Text(if (printer.discovering) "Discovering…" else "Find Bluetooth printers") }
+                printer.devices.forEach { device ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(device.name ?: device.address, Modifier.weight(1f), maxLines = 1)
+                        TextButton(onClick = { customer = device.address }) { Text(if (customer == device.address) "Receipt ✓" else "Receipt") }
+                        TextButton(onClick = { kitchen = device.address }) { Text(if (kitchen == device.address) "Kitchen ✓" else "Kitchen") }
+                    }
                 }
             }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                store.saveProfile(profile)
+                store.setTheme(theme)
+                store.setCustomerPrinterAddress(customer)
+                store.setKitchenPrinterAddress(kitchen)
+                printer.device(customer)?.let { printer.connectCustomer(it) }
+                printer.device(kitchen)?.let { printer.connectKitchen(it) }
+                close()
+            }) { Text("Save") }
         }
-    }, confirmButton = {
-        TextButton(onClick = {
-            store.saveProfile(profile); store.setTheme(theme); store.setCustomerPrinterAddress(customer); store.setKitchenPrinterAddress(kitchen)
-            printer.device(customer)?.let { printer.connectCustomer(it) }; printer.device(kitchen)?.let { printer.connectKitchen(it) }; close()
-        }) { Text("Save") }
-    })
+    )
 }
