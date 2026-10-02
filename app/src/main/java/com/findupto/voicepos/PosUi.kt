@@ -53,6 +53,9 @@ fun PosApp(
     var opening by remember { mutableStateOf(!store.hasOpeningCash()) }
     var selectedSale by remember { mutableStateOf<Sale?>(null) }
     var manualCart by remember { mutableStateOf(false) }
+    var customerDialog by remember { mutableStateOf(false) }
+    var customerName by remember { mutableStateOf("") }
+    var customerPhone by remember { mutableStateOf("") }
     val menu = remember(tick) { store.menu() }
 
     val profile = remember(tick) { store.profile() }
@@ -90,11 +93,11 @@ fun PosApp(
                     is VoiceCommand.Remove -> cart = cart.filterNot { it.name.contains(command.name, true) }
                     VoiceCommand.CompletePrint -> {
                         if (cart.isNotEmpty()) {
-                            val order = PendingSale(System.currentTimeMillis(), cart, System.currentTimeMillis())
+                            val order = PendingSale(System.currentTimeMillis(), cart, System.currentTimeMillis(), customerName.trim(), customerPhone.trim())
                             store.addPending(order)
                             printer.printKitchen(kitchenReceipt(order, profile, store.theme()))
                             cart = emptyList()
-                            tick++
+                            customerName = ""; customerPhone = ""; tick++
                         }
                     }
                     VoiceCommand.Complete -> Unit
@@ -106,11 +109,15 @@ fun PosApp(
 
     fun sendOrder() {
         if (cart.isEmpty()) return
-        val order = PendingSale(System.currentTimeMillis(), cart, System.currentTimeMillis())
+        customerDialog = true
+    }
+
+    fun sendOrderWithCustomer(name: String, phone: String) {
+        customerName = name.trim(); customerPhone = phone.trim()
+        val order = PendingSale(System.currentTimeMillis(), cart, System.currentTimeMillis(), customerName, customerPhone)
         store.addPending(order)
         printer.printKitchen(kitchenReceipt(order, profile, store.theme()))
-        cart = emptyList()
-        tick++
+        cart = emptyList(); customerName = ""; customerPhone = ""; tick++
     }
 
     fun pay(order: PendingSale) {
@@ -186,6 +193,7 @@ fun PosApp(
         expense = false
     }
     if (settings) SettingsPage(store, printer) { settings = false; tick++ }
+    if (customerDialog) CustomerDetailsDialog({ name, phone -> sendOrderWithCustomer(name, phone); customerDialog = false }, { customerDialog = false })
     editing?.let { order -> EditDialog(order, { updated -> store.replacePending(updated); editing = null; tick++ }, { editing = null }) }
     selectedSale?.let { sale -> SaleDetailDialog(sale, profile, printer, store.theme()) { selectedSale = null } }
     if (manualCart) ManualCartDialog(menu, cart, { item ->
@@ -509,6 +517,25 @@ private fun SaleDetailDialog(sale: Sale, profile: CompanyProfile, printer: Print
 }
 
 @Composable
+private fun CustomerDetailsDialog(done: (String, String) -> Unit, close: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Customer Details (Optional)") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Leave either field empty and it will not print.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(name, { name = it }, label = { Text("Customer Name") }, singleLine = true)
+                OutlinedTextField(phone, { phone = it }, label = { Text("Phone Number") }, singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(onClick = { done(name, phone) }) { Text("PRINT KITCHEN") } },
+        dismissButton = { TextButton(onClick = close) { Text("Skip Details") } }
+    )
+}
+
+@Composable
 private fun ExpensesPage(expenses: List<Expense>, filter: Int, setFilter: (Int) -> Unit, add: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
@@ -623,7 +650,7 @@ private fun SettingsPage(store: Store, printer: PrinterManager, close: () -> Uni
                 OutlinedTextField(profile.footer, { profile = profile.copy(footer = it) }, label = { Text("Slip footer") })
                 Text("Receipt style", fontWeight = FontWeight.Bold)
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    ReceiptTheme.values().forEach { t -> FilterChip(theme == t, { theme = t }, label = { Text(t.name) }) }
+                    ReceiptTheme.values().forEach { t -> FilterChip(theme == t, { theme = t }, label = { Text(if (t == ReceiptTheme.ADVANCED_PREMIUM) "Advanced Premium" else t.name) }) }
                 }
                 Text("Bluetooth printers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
