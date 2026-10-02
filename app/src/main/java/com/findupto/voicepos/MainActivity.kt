@@ -88,8 +88,8 @@ class MainActivity : ComponentActivity() {
                         SpeechRecognizer.ERROR_NO_MATCH -> "No speech heard — try again"
                         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening timed out — try again"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required"
-                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "English (Pakistan) is unavailable — try English"
-                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "English speech is unavailable — try again"
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "Speech language unavailable — use Manual Mode"
+                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Speech language unavailable — use Manual Mode"
                         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer is busy — try again"
                         else -> "Voice error — try again"
                     }
@@ -108,6 +108,10 @@ class MainActivity : ComponentActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-PK")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1400)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800)
         }
         recognizer?.startListening(intent)
     }
