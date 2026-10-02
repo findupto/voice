@@ -27,24 +27,28 @@ object VoiceCommandEngine {
     )
 
     fun parse(raw: String, menu: List<MenuItem> = emptyList()): List<VoiceCommand> {
-        var s = raw.lowercase(Locale.US).replace(Regex("\brupees?\b"), "rs").replace("rs.", "rs").trim()
-        numberWords.forEach { (word, number) -> s = s.replace(Regex("\b$word\b"), number.toString()) }
+        var s = raw.lowercase(Locale.US)
+            .replace(Regex("""\brupees?\b"""), "rs")
+            .replace("rs.", "rs")
+            .trim()
+        numberWords.forEach { (word, number) -> s = s.replace(Regex("""\b$word\b"""), number.toString()) }
         val out = mutableListOf<VoiceCommand>()
 
-        if (Regex("\b(clear|empty|cancel|start over) (the )?(cart|order)\b|\bnew order\b").containsMatchIn(s)) out += VoiceCommand.Clear
-        if (Regex("\b(show|open|go to) (sales|sale history)\b").containsMatchIn(s)) out += VoiceCommand.Sales
-        if (Regex("\b(show|open|go to) (expenses|expense)\b").containsMatchIn(s)) out += VoiceCommand.Expenses
-        if (Regex("\b(show|open|go to) (reports|analysis|dashboard|analytics)\b").containsMatchIn(s)) out += VoiceCommand.Reports
-        if (Regex("\b(show|open|go to) (menu|products)\b").containsMatchIn(s)) out += VoiceCommand.Menu
-        if (Regex("\b(show|open|go to) (kitchen|orders)\b").containsMatchIn(s)) out += VoiceCommand.Kitchen
-        if (Regex("\b(open|show) (settings|printer)\b").containsMatchIn(s)) out += VoiceCommand.Settings
+        if (Regex("""\b(clear|empty|cancel|start over) (the )?(cart|order)\b|\bnew order\b""").containsMatchIn(s)) out += VoiceCommand.Clear
+        if (Regex("""\b(show|open|go to) (sales|sale history)\b""").containsMatchIn(s)) out += VoiceCommand.Sales
+        if (Regex("""\b(show|open|go to) (expenses|expense)\b""").containsMatchIn(s)) out += VoiceCommand.Expenses
+        if (Regex("""\b(show|open|go to) (reports|analysis|dashboard|analytics)\b""").containsMatchIn(s)) out += VoiceCommand.Reports
+        if (Regex("""\b(show|open|go to) (menu|products)\b""").containsMatchIn(s)) out += VoiceCommand.Menu
+        if (Regex("""\b(show|open|go to) (kitchen|orders)\b""").containsMatchIn(s)) out += VoiceCommand.Kitchen
+        if (Regex("""\b(open|show) (settings|printer)\b""").containsMatchIn(s)) out += VoiceCommand.Settings
+        if (Regex("""\b(pay|paid|payment) (last|latest|order)\b""").containsMatchIn(s)) out += VoiceCommand.PayLast
 
-        Regex("\b(?:remove|delete) (?:item )?(.+)").find(s)?.let { out += VoiceCommand.Remove(it.groupValues[1].trim()) }
+        Regex("""\b(?:remove|delete) (?:item )?(.+)""").find(s)?.let { out += VoiceCommand.Remove(it.groupValues[1].trim()) }
 
-        Regex("\b(?:increase|add) (?:quantity of )?(.+?)\s+by\s+(\d+)\b").find(s)?.let {
+        Regex("""\b(?:increase|add) (?:quantity of )?(.+?)\s+by\s+(\d+)\b""").find(s)?.let {
             out += VoiceCommand.Quantity(it.groupValues[1].trim(), it.groupValues[2].toInt())
         }
-        Regex("\b(?:decrease|reduce) (?:quantity of )?(.+?)\s+by\s+(\d+)\b").find(s)?.let {
+        Regex("""\b(?:decrease|reduce) (?:quantity of )?(.+?)\s+by\s+(\d+)\b""").find(s)?.let {
             out += VoiceCommand.Quantity(it.groupValues[1].trim(), -it.groupValues[2].toInt())
         }
 
@@ -70,7 +74,7 @@ object VoiceCommandEngine {
                 out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
         }
 
-        if (Regex("\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b").containsMatchIn(s)) out += VoiceCommand.CompletePrint
+        if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
         return out.distinctBy { it.toString() }
     }
 }
