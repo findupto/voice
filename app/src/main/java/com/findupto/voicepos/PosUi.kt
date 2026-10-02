@@ -51,7 +51,7 @@ fun PosApp(
     var settings by remember { mutableStateOf(false) }
     var expense by remember { mutableStateOf(false) }
     var opening by remember { mutableStateOf(!store.hasOpeningCash()) }
-    var selectedSale by remember { mutableStateOf<Sale?>(null) }
+    var selectedSale by remember { mutableStateOf<Sale?>(null) }\n    var manualCart by remember { mutableStateOf(false) }
     val menu = remember(tick) { store.menu() }
 
     val profile = remember(tick) { store.profile() }
@@ -156,7 +156,7 @@ fun PosApp(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                0 -> QuickSale(cart, voiceStatus, ::sendOrder, listen, openSpeechSettings, { cart = emptyList() }) { item, delta ->
+                0 -> QuickSale(cart, voiceStatus, ::sendOrder, listen, openSpeechSettings, { cart = emptyList() }, { manualCart = true }) { item, delta ->
                     cart = cart.map { if (it == item) it.copy(qty = (it.qty + delta).coerceAtLeast(0)) else it }.filter { it.qty > 0 }
                 }
                 1 -> MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu) { item ->
@@ -186,7 +186,7 @@ fun PosApp(
     }
     if (settings) SettingsPage(store, printer) { settings = false; tick++ }
     editing?.let { order -> EditDialog(order, { updated -> store.replacePending(updated); editing = null; tick++ }, { editing = null }) }
-    selectedSale?.let { sale -> SaleDetailDialog(sale, profile, printer, store.theme()) { selectedSale = null } }
+    selectedSale?.let { sale -> SaleDetailDialog(sale, profile, printer, store.theme()) { selectedSale = null } }\n    if (manualCart) ManualCartDialog(menu, cart, { item ->\n        val index = cart.indexOfFirst { it.name.equals(item.name, true) && it.price == item.price }\n        cart = if (index >= 0) cart.toMutableList().also { list -> list[index] = list[index].copy(qty = list[index].qty + 1) } else cart + SaleItem(item.name, 1, item.price)\n    }, { manualCart = false })
 }
 
 @Composable
