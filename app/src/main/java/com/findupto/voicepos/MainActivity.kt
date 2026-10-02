@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
     private var voiceRetryCount = 0
     private var listening = false
     private var recognitionMode = 0 // 0 = system, 1 = on-device
+    private var recognitionAttempt = 0
     private val voiceHandler by lazy { android.os.Handler(mainLooper) }
 
     private val exportMenuLauncher = registerForActivityResult(CreateDocument("text/csv")) { uri -> uri?.let { writeMenuCsv(it) } }
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
     private fun listen() {
         voiceRetryCount = 0
+        recognitionAttempt = 0
         recognitionMode = 0
         startVoiceListening()
     }
@@ -110,17 +112,18 @@ class MainActivity : ComponentActivity() {
                         error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
                         error == SpeechRecognizer.ERROR_SERVER ||
                         error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED
-                    if (retryable && voiceRetryCount < 1) {
+                    if (retryable && voiceRetryCount < 3) {
                         voiceRetryCount++
-                        voiceStatus.value = "Voice method failed — trying another method…"
+                        recognitionAttempt++
+                        voiceStatus.value = "Voice method failed — retrying automatically (" + voiceRetryCount + "/3)…"
                         voiceHandler.postDelayed({
-                            if (recognitionMode == 0 && Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this@MainActivity)) {
-                                recognitionMode = 1
-                                startVoiceListening()
-                            } else {
-                                voiceStatus.value = "No voice heard — use Manual Add"
-                            }
-                        }, 500)
+                            recognitionMode = if (
+                                Build.VERSION.SDK_INT >= 31 &&
+                                SpeechRecognizer.isOnDeviceRecognitionAvailable(this@MainActivity) &&
+                                recognitionAttempt % 2 == 1
+                            ) 1 else 0
+                            startVoiceListening()
+                        }, 650)
                         return
                     }
                     voiceStatus.value = when (error) {
@@ -134,8 +137,10 @@ class MainActivity : ComponentActivity() {
                 }
                 override fun onResults(results: Bundle?) {
                     heard.value = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?.firstOrNull().orEmpty()
-                    voiceStatus.value = if (heard.value.isBlank()) "Ready for voice" else "Voice captured"
+                        ?.firstOrNull().orEmpty().trim()
+                    voiceRetryCount = 0
+                    recognitionAttempt = 0
+                    voiceStatus.value = if (heard.value.isBlank()) "No voice heard — tap Try Voice or use Manual Add" else "Voice captured"
                 }
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -144,7 +149,8 @@ class MainActivity : ComponentActivity() {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            // Use the device/Google Speech language configuration.
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, java.util.Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
@@ -228,6 +234,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         recognizer?.destroy()
+        voiceHandler.removeCallbacksAndMessages(null)
         printer.close()
         super.onDestroy()
     }
