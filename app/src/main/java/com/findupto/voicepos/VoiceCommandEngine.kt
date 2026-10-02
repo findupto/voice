@@ -63,6 +63,19 @@ object VoiceCommandEngine {
             if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
         }
 
+        // Also accept natural shop phrasing such as "Deal 5 at 1470".
+        // Here the product name comes first, followed by quantity and total/unit price.
+        val nameQtyPricePattern = Regex(
+            """(?:^|,|;|\\band\\b|\\bthen\\b)\\s*(.+?)\\s+(\\d+)\\s+(?:price|at)\\s+(?:rs\\s*)?(\\d+(?:\\.\\d+)?)\\s*(?:each)?(?=\\s*(?:,|;|\\band\\b|\\bthen\\b|$))""",
+            RegexOption.IGNORE_CASE
+        )
+        nameQtyPricePattern.findAll(s).forEach { m ->
+            val name = m.groupValues[1].trim().removePrefix("add ").removePrefix("order ").trim()
+            val qty = m.groupValues[2].toIntOrNull() ?: 0
+            val price = m.groupValues[3].toDoubleOrNull() ?: 0.0
+            if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
+        }
+
         menu.sortedByDescending { it.name.length }.forEach { product ->
             val escaped = Regex.escape(product.name.lowercase(Locale.US))
             Regex("""(?:^|\b)(\d+)\s+$escaped(?:\s+each)?(?=$|\b|,|;|\band\b|\bthen\b)""", RegexOption.IGNORE_CASE)
