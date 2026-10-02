@@ -37,15 +37,38 @@ fun QuickSale(cart: List<SaleItem>, voiceStatus: String, send: () -> Unit, liste
 
 @Composable
 fun ManualCartDialog(menu: List<MenuItem>, add: (MenuItem) -> Unit, addCustom: (String, Int, Double) -> Unit, close: () -> Unit) {
-    var query by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var qty by remember { mutableStateOf("1") }; var price by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var qty by remember { mutableStateOf("1") }
+    var price by remember { mutableStateOf("") }
     val filtered = menu.filter { it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true) }
-    AlertDialog(onDismissRequest = close, title = { Text("Add Product") }, text = { Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search menu") }, singleLine = true)
-        filtered.take(20).forEach { item -> Card(Modifier.fillMaxWidth().clickable { add(item) }) { Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text(listOf(item.variant, item.size).filter(String::isNotBlank).joinToString(" • ")); Text(money(item.price)) }; Icon(Icons.Default.Add, null) } } }
-        HorizontalDivider(); Text("Custom", fontWeight = FontWeight.Bold); OutlinedTextField(name, { name = it }, label = { Text("Product") }, singleLine = true); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(qty, { qty = it.filter(Char::isDigit) }, label = { Text("Qty") }, Modifier.weight(1f)); OutlinedTextField(price, { price = it }, label = { Text("Price") }, Modifier.weight(1f)) }; Button(onClick = { val q = qty.toIntOrNull() ?: 0; val p = price.toDoubleOrNull() ?: 0.0; if (name.isNotBlank() && q > 0 && p > 0) { addCustom(name.trim(), q, p); name = ""; price = ""; qty = "1" } }, Modifier.fillMaxWidth()) { Text("ADD CUSTOM") }
-    } }, confirmButton = { TextButton(onClick = close) { Text("DONE") } })
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Add Product") },
+        text = {
+  Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search menu") }, singleLine = true)
+      filtered.take(20).forEach { item ->
+          Card(Modifier.fillMaxWidth().clickable { add(item) }) {
+              Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                  Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text(listOf(item.variant, item.size).filter(String::isNotBlank).joinToString(" • ")); Text(money(item.price)) }
+                  Icon(Icons.Default.Add, null)
+              }
+          }
+      }
+      HorizontalDivider()
+      Text("Custom", fontWeight = FontWeight.Bold)
+      OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Product") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedTextField(value = qty, onValueChange = { qty = it.filter(Char::isDigit) }, label = { Text("Qty") }, modifier = Modifier.weight(1f), singleLine = true)
+          OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Price") }, modifier = Modifier.weight(1f), singleLine = true)
+      }
+      Button(onClick = { val q = qty.toIntOrNull() ?: 0; val p = price.toDoubleOrNull() ?: 0.0; if (name.isNotBlank() && q > 0 && p > 0) { addCustom(name.trim(), q, p); name = ""; price = ""; qty = "1" } }, modifier = Modifier.fillMaxWidth()) { Text("ADD CUSTOM") }
+  }
+        },
+        confirmButton = { TextButton(onClick = close) { Text("DONE") } }
+    )
 }
-
 @Composable
 fun MenuPage(menu: List<MenuItem>, store: Store, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, scanDocument: () -> Unit, addToCart: (MenuItem) -> Unit) {
     var adding by remember { mutableStateOf(false) }
