@@ -21,75 +21,65 @@ sealed class VoiceCommand {
 }
 
 object VoiceCommandEngine {
-    private val numberWords = mapOf(
-        "zero" to 0, "one" to 1, "two" to 2, "three" to 3, "four" to 4,
-        "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10
-    )
+    private val numberWords = mapOf("zero" to 0,"one" to 1,"two" to 2,"three" to 3,"four" to 4,"five" to 5,"six" to 6,"seven" to 7,"eight" to 8,"nine" to 9,"ten" to 10)
+    private val filler = Regex("\\b(please|pls|for me|me|the|some|a|an|of|item|items|product|products)\\b", RegexOption.IGNORE_CASE)
 
-    fun parse(raw: String, menu: List<MenuItem> = emptyList()): List<VoiceCommand> {
-        var s = raw.lowercase(Locale.US)
-            .replace(Regex("""[!?]+"""), " ")
-            .replace(Regex("""\brupees?\b"""), "rs")
-            .replace("rs.", "rs")
-            .trim()
-        numberWords.forEach { (word, number) -> s = s.replace(Regex("""\b$word\b"""), number.toString()) }
-        val out = mutableListOf<VoiceCommand>()
+    private fun norm(x:String)=x.lowercase(Locale.US)
+        .replace("&"," and ").replace(Regex("[^a-z0-9]+")," ").trim().replace(Regex("\\s+")," ")
+    private fun words(x:String)=norm(x).split(" ").filter{it.length>1}
+    private fun distance(a:String,b:String):Int {
+        val d=Array(a.length+1){IntArray(b.length+1)}
+        for(i in 0..a.length)d[i][0]=i
+        for(j in 0..b.length)d[0][j]=j
+        for(i in 1..a.length)for(j in 1..b.length)d[i][j]=minOf(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+if(a[i-1]==b[j-1])0 else 1)
+        return d[a.length][b.length]
+    }
+    private fun bestMenu(text:String, menu:List<MenuItem>):MenuItem? {
+        val q=norm(text).replace(filler,"").trim(); if(q.isBlank())return null
+        return menu.map { p ->
+            val label=norm(listOf(p.name,p.variant,p.size).filter{it.isNotBlank()}.joinToString(" "))
+            val qw=words(q); val lw=words(label)
+            val overlap=qw.count{a->lw.any{b->a==b || (a.length>=4&&b.length>=4&&(a.contains(b)||b.contains(a)))}}
+            val score=overlap.toDouble()/qw.size.coerceAtLeast(1)+if(q==label)1.0 else 0.0
+            Triple(p,score,distance(q,label))
+        }.maxWithOrNull(compareBy<Triple<MenuItem,Double,Int>>{it.second}.thenByDescending{ -it.third})?.takeIf{it.second>=0.5 || it.third<=2}?.first
+    }
 
-        if (Regex("""\b(clear|empty|cancel|start over) (the )?(cart|order)\b|\bnew order\b""").containsMatchIn(s)) out += VoiceCommand.Clear
-        if (Regex("""\b(show|open|go to) (sales|sale history)\b""").containsMatchIn(s)) out += VoiceCommand.Sales
-        if (Regex("""\b(show|open|go to) (expenses|expense)\b""").containsMatchIn(s)) out += VoiceCommand.Expenses
-        if (Regex("""\b(show|open|go to) (reports|analysis|dashboard|analytics)\b""").containsMatchIn(s)) out += VoiceCommand.Reports
-        if (Regex("""\b(show|open|go to) (menu|products)\b""").containsMatchIn(s)) out += VoiceCommand.Menu
-        if (Regex("""\b(show|open|go to) (kitchen|orders)\b""").containsMatchIn(s)) out += VoiceCommand.Kitchen
-        if (Regex("""\b(open|show) (settings|printer)\b""").containsMatchIn(s)) out += VoiceCommand.Settings
-        if (Regex("""\b(pay|paid|payment) (last|latest|order)\b""").containsMatchIn(s)) out += VoiceCommand.PayLast
-
-        Regex("""\b(?:remove|delete) (?:item )?(.+)""").find(s)?.let { out += VoiceCommand.Remove(it.groupValues[1].trim()) }
-        Regex("""\b(?:increase|add) (?:quantity of )?(.+?)\s+by\s+(\d+)\b""").find(s)?.let {
-            out += VoiceCommand.Quantity(it.groupValues[1].trim(), it.groupValues[2].toInt())
+    fun parse(raw:String, menu:List<MenuItem> = emptyList()):List<VoiceCommand> {
+        var s=raw.lowercase(Locale.US).replace(Regex("[!?]+")," ").replace(Regex("\\brupees?\\b"),"rs").replace("rs.","rs").trim()
+        numberWords.forEach{(w,n)->s=s.replace(Regex("\\b$w\\b"),n.toString())}
+        val out=mutableListOf<VoiceCommand>()
+        if(Regex("\\b(clear|empty|cancel|start over|reset)\\b.*\\b(cart|order)\\b|\\bnew order\\b").containsMatchIn(s))out+=VoiceCommand.Clear
+        if(Regex("\\b(show|open|go to)\\s+(sales|sale history)\\b").containsMatchIn(s))out+=VoiceCommand.Sales
+        if(Regex("\\b(show|open|go to)\\s+(expenses|expense)\\b").containsMatchIn(s))out+=VoiceCommand.Expenses
+        if(Regex("\\b(show|open|go to)\\s+(reports|analysis|dashboard|analytics)\\b").containsMatchIn(s))out+=VoiceCommand.Reports
+        if(Regex("\\b(show|open|go to)\\s+(menu|products)\\b").containsMatchIn(s))out+=VoiceCommand.Menu
+        if(Regex("\\b(show|open|go to)\\s+(kitchen|orders)\\b").containsMatchIn(s))out+=VoiceCommand.Kitchen
+        if(Regex("\\b(open|show)\\s+(settings|printer)\\b").containsMatchIn(s))out+=VoiceCommand.Settings
+        if(Regex("\\b(pay|paid|payment|settle)\\s+(last|latest|order)\\b|\\bpay last\\b").containsMatchIn(s))out+=VoiceCommand.PayLast
+        if(Regex("\\b(checkout|complete|finish|place|send|print)\\b.*\\b(order|bill|kitchen|receipt)\\b|\\bplace order\\b").containsMatchIn(s))out+=VoiceCommand.CompletePrint
+        Regex("\\b(?:remove|delete|cancel)\\s+(?:item|product)?\\s*(.+)$").find(s)?.let{out+=VoiceCommand.Remove(it.groupValues[1].trim())}
+        Regex("\\b(?:set|change)\\s+(?:quantity|qty)\\s+(?:of\\s+)?(.+?)\\s+(?:to|=)\\s*(\\d+)\\b").find(s)?.let{m->
+            val old=bestMenu(m.groupValues[1],menu); if(old!=null)out+=VoiceCommand.Quantity(old.name,-999+m.groupValues[2].toInt()) else out+=VoiceCommand.Quantity(m.groupValues[1].trim(),m.groupValues[2].toInt())
         }
-        Regex("""\b(?:decrease|reduce) (?:quantity of )?(.+?)\s+by\s+(\d+)\b""").find(s)?.let {
-            out += VoiceCommand.Quantity(it.groupValues[1].trim(), -it.groupValues[2].toInt())
-        }
+        Regex("\\b(?:increase|add)\\s+(?:quantity of )?(.+?)\\s+by\\s+(\\d+)\\b").find(s)?.let{out+=VoiceCommand.Quantity(it.groupValues[1].trim(),it.groupValues[2].toInt())}
+        Regex("\\b(?:decrease|reduce)\\s+(?:quantity of )?(.+?)\\s+by\\s+(\\d+)\\b").find(s)?.let{out+=VoiceCommand.Quantity(it.groupValues[1].trim(),-it.groupValues[2].toInt())}
 
-        val itemPattern = Regex(
-            """(?:^|,|;|\band\b|\bthen\b|\badd\b)\s*(\d+)\s+(.+?)\s+(?:price|at)\s+(?:rs\s*)?(\d+(?:\.\d+)?)\s*(?:each)?(?=\s*(?:,|;|\band\b|\bthen\b|\badd\b|$))""",
-            RegexOption.IGNORE_CASE
-        )
-        itemPattern.findAll(s).forEach { m ->
-            val qty = m.groupValues[1].toIntOrNull() ?: 0
-            val name = m.groupValues[2].trim()
-            val price = m.groupValues[3].toDoubleOrNull() ?: 0.0
-            if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
+        val segments=s.split(Regex("\\s*(?:,|;|\\band then\\b|\\bthen\\b|\\band\\b)\\s*")).map{it.trim()}.filter{it.isNotBlank()}
+        val priceRx=Regex("(?:rs\\s*)?(\\d+(?:[.,]\\d{1,2})?)\\s*(?:each|per item)?$",RegexOption.IGNORE_CASE)
+        for(seg0 in segments){
+            var seg=seg0.replace(Regex("^(add|order|give|make|get|take|put|include)\\s+"),"").trim()
+            val pm=priceRx.find(seg)
+            val price=pm?.groupValues?.get(1)?.replace(",","")?.toDoubleOrNull()
+            if(pm!=null)seg=seg.substring(0,pm.range.first).trim()
+            val qm=Regex("^(\\d+)\\s*(?:x|times)?\\s+(.+)$",RegexOption.IGNORE_CASE).find(seg)
+            val qty=(qm?.groupValues?.get(1)?.toIntOrNull()?:1).coerceAtLeast(1)
+            val name=qm?.groupValues?.get(2)?.trim()?:seg
+            if(name.isBlank()||name.matches(Regex("(?i)(add|order|please|something|it|that)")))continue
+            val product=bestMenu(name,menu)
+            if(product!=null){out+=VoiceCommand.Add(SaleItem(product.name,qty,product.price))}
+            else if(price!=null&&price>0){out+=VoiceCommand.Add(SaleItem(name,qty,price))}
         }
-
-        val nameQtyPricePattern = Regex(
-            """(?:^|,|;|\band\b|\bthen\b)\s*(.+?)\s+(\d+)\s+(?:price|at)\s+(?:rs\s*)?(\d+(?:\.\d+)?)\s*(?:each)?(?=\s*(?:,|;|\band\b|\bthen\b|$))""",
-            RegexOption.IGNORE_CASE
-        )
-        nameQtyPricePattern.findAll(s).forEach { m ->
-            val name = m.groupValues[1].trim().removePrefix("add ").removePrefix("order ").trim()
-            val qty = m.groupValues[2].toIntOrNull() ?: 0
-            val price = m.groupValues[3].toDoubleOrNull() ?: 0.0
-            if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
-        }
-
-                // Strong menu detection: normalize punctuation and tolerate natural filler words.
-        fun norm(x:String)=x.lowercase(Locale.US).replace("&"," and ").replace(Regex("[^a-z0-9]+")," ").trim().replace(Regex("\\s+")," ")
-        val normalized=norm(s)
-        menu.sortedByDescending { (it.name+" "+it.variant+" "+it.size).length }.forEach { product ->
-            val label=norm(listOf(product.name,product.variant,product.size).filter{it.isNotBlank()}.joinToString(" "))
-            val qty=Regex("\\b(\\d+)\\s+(?:x\\s+)?"+Regex.escape(label)+"\\b").find(normalized)?.groupValues?.get(1)?.toIntOrNull()
-            val commandQty=Regex("\\b(?:add|order|give|make|take|get)\\s+(?:me\\s+)?(\\d+)?\\s*(?:x\\s+)?"+Regex.escape(label)+"\\b").find(normalized)?.groupValues?.get(1)?.toIntOrNull()
-            if(qty!=null && qty>0) out += VoiceCommand.Add(SaleItem(product.name,qty,product.price))
-            else if(commandQty!=null && commandQty>0) out += VoiceCommand.Add(SaleItem(product.name,commandQty,product.price))
-            else {
-                val tokens=norm(product.name).split(" ").filter{it.length>1}
-                if(tokens.isNotEmpty() && tokens.all { normalized.contains(Regex("\\b"+Regex.escape(it)+"\\b")) } && !out.any { it is VoiceCommand.Add && it.item.name.equals(product.name,true) })
-                    out += VoiceCommand.Add(SaleItem(product.name,1,product.price))
-            }
-        }
-        if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
-        return out.distinctBy { it.toString() }
+        return out.distinctBy{it.toString()}
     }
 }
