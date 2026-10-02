@@ -1,5 +1,7 @@
 package com.findupto.voicepos
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
@@ -7,44 +9,46 @@ import java.util.*
 fun money(v:Double)="Rs "+String.format(Locale.US,"%,.0f",v)
 fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(v))
 
+private const val W=42
+private const val SEP="------------------------------------------"
+private fun fit(s:String,n:Int)=s.replace("\n"," ").trim().take(n)
+private fun pair(a:String,b:String):String {
+    val r=fit(b,W); val l=fit(a,W-r.length-1); return l+" ".repeat((W-l.length-r.length).coerceAtLeast(1))+r
+}
+private fun cols(name:String,qty:String,price:String):String {
+    val pw=11; val qw=6; val nw=W-qw-pw-2
+    return fit(name,nw).padEnd(nw)+" "+fit(qty,qw).padStart(qw)+" "+fit(price,pw).padStart(pw)
+}
+private fun logo(path:String):ByteArray? {
+    val b=runCatching{BitmapFactory.decodeFile(path)}.getOrNull()?:return null
+    val max=384; val scale=minOf(1f,max.toFloat()/b.width)
+    val x=if(scale<1) Bitmap.createScaledBitmap(b,max,(b.height*scale).toInt().coerceAtLeast(1),true) else b
+    val wb=(x.width+7)/8; val o=ByteArrayOutputStream()
+    o.write(byteArrayOf(0x1D,0x76,0x30,0,wb.toByte(),(wb shr 8).toByte(),x.height.toByte(),(x.height shr 8).toByte()))
+    for(y in 0 until x.height) for(q in 0 until wb){var v=0;for(bit in 0..7){val px=q*8+bit;if(px<x.width){val c=x.getPixel(px, y);val g=(android.graphics.Color.red(c)*299+android.graphics.Color.green(c)*587+android.graphics.Color.blue(c)*114)/1000;if(g<180)v=v or (1 shl (7-bit))}};o.write(v)}
+    return o.toByteArray()
+}
 private fun escpos(p:CompanyProfile,title:String,items:List<SaleItem>,total:Double,theme:ReceiptTheme,customerName:String="",customerPhone:String="",showLogo:Boolean=false):ByteArray{
-    val o=ByteArrayOutputStream()
-    fun w(s:String){o.write(s.toByteArray(Charsets.UTF_8))}
-    fun cmd(vararg b:Int){o.write(b.map{(it and 255).toByte()}.toByteArray())}
-    cmd(0x1B,0x40); cmd(0x1B,0x61,1)
-    // Logo rendering is intentionally controlled per receipt type. Text fallback remains printer-safe.
-    if(theme==ReceiptTheme.ADVANCED_PREMIUM){
-        cmd(0x1B,0x45,1); cmd(0x1D,0x21,0x11); w(p.name.take(30)+"\n")
-        cmd(0x1D,0x21,0); cmd(0x1B,0x45,0)
-        if(p.address.isNotBlank())w(p.address.take(42)+"\n")
-        if(p.phone.isNotBlank())w(p.phone.take(42)+"\n")
-        w("==========================================\n"); cmd(0x1B,0x45,1); w(title+"\n"); cmd(0x1B,0x45,0); w(date(System.currentTimeMillis())+"\n")
-        if(customerName.isNotBlank())w("Customer: "+customerName.take(30)+"\n")
-        if(customerPhone.isNotBlank())w("Phone: "+customerPhone.take(30)+"\n")
-        w("------------------------------------------\n")
-        items.forEach{w(it.qty.toString()+"  "+it.name.take(25)+"\n");w("     "+money(it.price)+" x "+it.qty+"       "+money(it.total)+"\n")}
-        w("------------------------------------------\n"); cmd(0x1B,0x45,1); w("TOTAL  "+money(total)+"\n"); cmd(0x1B,0x45,0)
-        if(p.footer.isNotBlank())w("\n"+p.footer.take(42)+"\n"); w("\n\n\n"); return o.toByteArray()
-    }
-    cmd(0x1B,0x61,if(theme==ReceiptTheme.MODERN)0 else 1); cmd(0x1B,0x45,1); w(p.name.take(32)+"\n"); cmd(0x1B,0x45,0)
-    if(p.address.isNotBlank())w(p.address.take(42)+"\n"); if(p.phone.isNotBlank())w(p.phone.take(42)+"\n")
-    w(title+"\n"+date(System.currentTimeMillis())+"\n------------------------------------------\n")
-    if(customerName.isNotBlank())w("Customer: "+customerName.take(30)+"\n"); if(customerPhone.isNotBlank())w("Phone: "+customerPhone.take(30)+"\n")
-    items.forEach{w(it.qty.toString()+" x "+it.name.take(30)+"\n  "+money(it.price)+" each    "+money(it.total)+"\n")}
-    w("------------------------------------------\n"); cmd(0x1B,0x45,1); w("TOTAL                         "+money(total)+"\n"); cmd(0x1B,0x45,0)
-    if(p.footer.isNotBlank())w("\n"+p.footer.take(42)+"\n"); w("\n\n\n"); return o.toByteArray()
+    val o=ByteArrayOutputStream(); fun w(s:String){o.write(s.toByteArray(Charsets.UTF_8))}; fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())}
+    c(0x1B,0x40,0x1B,0x61,1)
+    if(showLogo) logo(p.logoPath)?.let{o.write(it);w("\n")}
+    c(0x1B,0x45,1,0x1D,0x21,0x11);w(fit(p.name.ifBlank{"VOICE POS"},W)+"\n");c(0x1D,0x21,0,0x1B,0x45,0)
+    if(p.phone.isNotBlank())w(fit(p.phone,W)+"\n")
+    p.address.split("\n").filter{it.isNotBlank()}.forEach{w(fit(it,W)+"\n")}
+    w(SEP+"\n");c(0x1B,0x45,1);w(fit(title,W)+"\n");c(0x1B,0x45,0);w(pair("Date",date(System.currentTimeMillis()))+"\n")
+    if(customerName.isNotBlank()||customerPhone.isNotBlank()){w(SEP+"\n");w(pair(customerName,customerPhone)+"\n")}
+    w(SEP+"\n");w(cols("ITEM","QTY","PRICE")+"\n");w(SEP+"\n")
+    items.forEach{w(cols(it.name,it.qty.toString(),money(it.total))+"\n")}
+    w(SEP+"\n");w(pair("Bill",money(total))+"\n")
+    c(0x1B,0x45,1);w(pair("TOTAL BILL",money(total))+"\n");c(0x1B,0x45,0)
+    w(SEP+"\n");if(p.footer.isNotBlank()){c(0x1B,0x61,1);w(fit(p.footer,W)+"\n")};w("\n\n\n");return o.toByteArray()
 }
-
 fun customerReceipt(s:Sale,p:CompanyProfile,t:ReceiptTheme)=escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone,p.saleLogoEnabled)
-
 fun kitchenReceipt(s:PendingSale,p:CompanyProfile,t:ReceiptTheme):ByteArray{
-    val o=ByteArrayOutputStream(); fun w(x:String){o.write(x.toByteArray(Charsets.UTF_8))}
-    o.write(byteArrayOf(0x1B,0x40,0x1B,0x61,0x01,0x1B,0x45,0x01,0x1D,0x21,0x11)); w("KITCHEN ORDER\n")
-    o.write(byteArrayOf(0x1D,0x21,0x00,0x1B,0x45,0x00)); w(p.name.take(32)+"\n"); w("ORDER #"+s.id+"  "+date(s.time)+"\n")
-    if(s.customerName.isNotBlank())w("CUSTOMER: "+s.customerName.take(30)+"\n")
-    if(s.customerPhone.isNotBlank())w("PHONE: "+s.customerPhone.take(30)+"\n")
-    w("==========================================\n"); s.items.forEach{w(it.qty.toString()+"  "+it.name.take(32)+"\n")}; w("==========================================\n\n\n"); return o.toByteArray()
+    val o=ByteArrayOutputStream();fun w(x:String){o.write(x.toByteArray(Charsets.UTF_8))};fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())}
+    c(0x1B,0x40,0x1B,0x61,1);if(p.kitchenLogoEnabled)logo(p.logoPath)?.let{o.write(it);w("\n")}
+    c(0x1B,0x45,1,0x1D,0x21,0x11);w("KITCHEN ORDER\n");c(0x1D,0x21,0,0x1B,0x45,0);w(fit(p.name,W)+"\n");w(pair("ORDER #"+s.id,date(s.time))+"\n");w(SEP+"\n")
+    s.items.forEach{w(pair(it.qty.toString()+" ×",it.name)+"\n")};w(SEP+"\n\n\n");return o.toByteArray()
 }
-
 fun startDay():Long=Calendar.getInstance().apply{set(Calendar.HOUR_OF_DAY,0);set(Calendar.MINUTE,0);set(Calendar.SECOND,0);set(Calendar.MILLISECOND,0)}.timeInMillis
 fun inRange(t:Long,f:Int):Boolean{val since=when(f){0->startDay();1->System.currentTimeMillis()-7*86400000L;2->System.currentTimeMillis()-30*86400000L;else->0L};return t>=since}
