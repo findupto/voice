@@ -44,7 +44,6 @@ object VoiceCommandEngine {
         if (Regex("""\b(pay|paid|payment) (last|latest|order)\b""").containsMatchIn(s)) out += VoiceCommand.PayLast
 
         Regex("""\b(?:remove|delete) (?:item )?(.+)""").find(s)?.let { out += VoiceCommand.Remove(it.groupValues[1].trim()) }
-
         Regex("""\b(?:increase|add) (?:quantity of )?(.+?)\s+by\s+(\d+)\b""").find(s)?.let {
             out += VoiceCommand.Quantity(it.groupValues[1].trim(), it.groupValues[2].toInt())
         }
@@ -63,10 +62,8 @@ object VoiceCommandEngine {
             if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
         }
 
-        // Also accept natural shop phrasing such as "Deal 5 at 1470".
-        // Here the product name comes first, followed by quantity and total/unit price.
         val nameQtyPricePattern = Regex(
-            """(?:^|,|;|\\band\\b|\\bthen\\b)\\s*(.+?)\\s+(\\d+)\\s+(?:price|at)\\s+(?:rs\\s*)?(\\d+(?:\\.\\d+)?)\\s*(?:each)?(?=\\s*(?:,|;|\\band\\b|\\bthen\\b|$))""",
+            """(?:^|,|;|\band\b|\bthen\b)\s*(.+?)\s+(\d+)\s+(?:price|at)\s+(?:rs\s*)?(\d+(?:\.\d+)?)\s*(?:each)?(?=\s*(?:,|;|\band\b|\bthen\b|$))""",
             RegexOption.IGNORE_CASE
         )
         nameQtyPricePattern.findAll(s).forEach { m ->
@@ -76,22 +73,24 @@ object VoiceCommandEngine {
             if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
         }
 
-        // Detect products directly from the configured Menu, including natural phrases
-        // such as "2 chicken shawarma", "add chicken shawarma", and variant/size names.
         menu.sortedByDescending { (it.name + " " + it.variant + " " + it.size).length }.forEach { product ->
-            val label = listOf(product.name, product.variant, product.size)
-                .filter { it.isNotBlank() }
-                .joinToString(" ")
+            val label = listOf(product.name, product.variant, product.size).filter { it.isNotBlank() }.joinToString(" ")
             val escaped = Regex.escape(label.lowercase(Locale.US))
             val nameEscaped = Regex.escape(product.name.lowercase(Locale.US))
-            Regex("""(?:^|\\b)(\\d+)\\s+(?:x\\s+)?$escaped(?:\\s+each)?(?=$|\\b|,|;|\\band\\b|\\bthen\\b)""", RegexOption.IGNORE_CASE)
+            Regex("""(?:^|\b)(\d+)\s+(?:x\s+)?$escaped(?:\s+each)?(?=$|\b|,|;|\band\b|\bthen\b)""", RegexOption.IGNORE_CASE)
                 .findAll(s).forEach { m ->
                     val qty = m.groupValues[1].toIntOrNull() ?: 0
                     if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
                 }
-            if (Regex("""\\b(?:add|order)\\s+(?:\\d+\\s+)?(?:x\\s+)?$escaped(?:\\s+each)?\\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
+            if (Regex("""\b(?:add|order)\s+(?:\d+\s+)?(?:x\s+)?$escaped(?:\s+each)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
                 out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
-            if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
+            if (Regex("""^\d+\s+$nameEscaped(?:\s+each)?$""", RegexOption.IGNORE_CASE).matches(s)) {
+                val qty = s.substringBefore(" ").toIntOrNull() ?: 0
+                if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
+            }
+        }
+
+        if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
         return out.distinctBy { it.toString() }
     }
 }
