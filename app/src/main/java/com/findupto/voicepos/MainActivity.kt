@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); store=Store(this); printer=PrinterManager(this)
         val ps=mutableListOf(Manifest.permission.RECORD_AUDIO); if(Build.VERSION.SDK_INT<31)ps+=Manifest.permission.ACCESS_FINE_LOCATION else { ps+=Manifest.permission.BLUETOOTH_SCAN;ps+=Manifest.permission.BLUETOOTH_CONNECT }; permissions.launch(ps.toTypedArray())
-        setContent { VoicePosTheme { PosApp(store,printer,heard.value,voiceStatus.value,scanStatus.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch(arrayOf("image/*"))},{scanLauncher.launch(arrayOf("image/*","application/pdf"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))}) } }
+        setContent { VoicePosTheme { PosApp(store,printer,heard.value,voiceStatus.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch(arrayOf("image/*"))},{scanLauncher.launch(arrayOf("image/*","application/pdf"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))}) } }
     }
 
     private fun canUseVoice()=SpeechRecognizer.isRecognitionAvailable(this)
