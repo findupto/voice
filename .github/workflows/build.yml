@@ -51,8 +51,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0-build-${{ github.run_number }}
-          name: Voice POS Premium v2.0 build ${{ github.run_number }}
+          tag_name: v2.1.0-build-${{ github.run_number }}
+          name: Voice POS Premium v2.1 build ${{ github.run_number }}
           body: |
             Automated Android APK build.
 
