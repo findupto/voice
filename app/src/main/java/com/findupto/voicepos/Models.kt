@@ -13,6 +13,9 @@ data class CompanyProfile(
     val name: String = "The Slice of Heaven",
     val address: String = "Old Utility Store near Police Line\nKhansar Road Bhakkar Punjab\nPakistan",
     val phone: String = "0332 1872929, 0310 3685151",
-    val footer: String = "Thank you for your visit"
+    val footer: String = "Thank you for your visit",
+    val logoPath: String = "",
+    val saleLogoEnabled: Boolean = false,
+    val kitchenLogoEnabled: Boolean = false
 )
 enum class ReceiptTheme { CLASSIC, MODERN, COMPACT, RESTAURANT, ADVANCED_PREMIUM }
