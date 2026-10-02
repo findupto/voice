@@ -1,0 +1,67 @@
+name: Fix Settings Form
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/java/com/findupto/voicepos/PosUiComponents.kt'
+      - '.github/workflows/fix-settings-form.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, 'Fix settings form compile') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 0}
+      - name: Replace settings screen with explicit Compose arguments
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p=Path('app/src/main/java/com/findupto/voicepos/PosUiComponents.kt')
+          s=p.read_text()
+          new='''@Composable
+          fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, exportBackup: () -> Unit, importBackup: () -> Unit, close: () -> Unit) {
+              var profile by remember { mutableStateOf(store.profile()) }
+              var theme by remember { mutableStateOf(store.theme()) }
+              AlertDialog(
+                  onDismissRequest = close,
+                  title = { Text("Settings") },
+                  text = {
+                      Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                          Text("Business Transfer", fontWeight = FontWeight.Bold)
+                          Row(Modifier.fillMaxWidth()) {
+                              Button(onClick = exportBackup, modifier = Modifier.weight(1f)) { Text("EXPORT") }
+                              OutlinedButton(onClick = importBackup, modifier = Modifier.weight(1f)) { Text("IMPORT") }
+                          }
+                          OutlinedTextField(value = profile.name, onValueChange = { profile = profile.copy(name = it) }, label = { Text("Company Name") }, modifier = Modifier.fillMaxWidth())
+                          OutlinedTextField(value = profile.phone, onValueChange = { profile = profile.copy(phone = it) }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
+                          OutlinedTextField(value = profile.address, onValueChange = { profile = profile.copy(address = it) }, label = { Text("Address") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+                          OutlinedTextField(value = profile.footer, onValueChange = { profile = profile.copy(footer = it) }, label = { Text("Footer") }, modifier = Modifier.fillMaxWidth())
+                          Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                              Text(if (profile.logoPath.isBlank()) "Company logo not uploaded" else "Company logo uploaded ✓", Modifier.weight(1f))
+                              OutlinedButton(onClick = pickLogo) { Text("UPLOAD / CHANGE LOGO") }
+                          }
+                          Text("Receipt style", fontWeight = FontWeight.Bold)
+                          Row(Modifier.horizontalScroll(rememberScrollState())) {
+                              ReceiptTheme.values().forEach { t -> FilterChip(selected = theme == t, onClick = { theme = t }, label = { Text(t.name) }) }
+                          }
+                      }
+                  },
+                  confirmButton = {
+                      TextButton(onClick = { store.saveProfile(profile.copy(saleLogoEnabled = true, kitchenLogoEnabled = true)); store.setTheme(theme); close() }) { Text("SAVE") }
+                  }
+              )
+          }
+          '''
+          new='\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())+'\n'
+          s=re.sub(r'@Composable\nfun SettingsPage[\\s\\S]*$', new, s)
+          p.write_text(s)
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/findupto/voicepos/PosUiComponents.kt
+          git commit -m 'Fix settings form compile'
+          git push origin main
