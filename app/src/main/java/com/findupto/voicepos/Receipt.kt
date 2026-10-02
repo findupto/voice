@@ -7,11 +7,12 @@ import java.util.*
 fun money(v:Double)="Rs "+String.format(Locale.US,"%,.0f",v)
 fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(v))
 
-private fun escpos(p:CompanyProfile,title:String,items:List<SaleItem>,total:Double,theme:ReceiptTheme,customerName:String="",customerPhone:String=""):ByteArray{
+private fun escpos(p:CompanyProfile,title:String,items:List<SaleItem>,total:Double,theme:ReceiptTheme,customerName:String="",customerPhone:String="",showLogo:Boolean=false):ByteArray{
     val o=ByteArrayOutputStream()
     fun w(s:String){o.write(s.toByteArray(Charsets.UTF_8))}
     fun cmd(vararg b:Int){o.write(b.map{(it and 255).toByte()}.toByteArray())}
     cmd(0x1B,0x40); cmd(0x1B,0x61,1)
+    // Logo rendering is intentionally controlled per receipt type. Text fallback remains printer-safe.
     if(theme==ReceiptTheme.ADVANCED_PREMIUM){
         cmd(0x1B,0x45,1); cmd(0x1D,0x21,0x11); w(p.name.take(30)+"\n")
         cmd(0x1D,0x21,0); cmd(0x1B,0x45,0)
@@ -34,7 +35,7 @@ private fun escpos(p:CompanyProfile,title:String,items:List<SaleItem>,total:Doub
     if(p.footer.isNotBlank())w("\n"+p.footer.take(42)+"\n"); w("\n\n\n"); return o.toByteArray()
 }
 
-fun customerReceipt(s:Sale,p:CompanyProfile,t:ReceiptTheme)=escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone)
+fun customerReceipt(s:Sale,p:CompanyProfile,t:ReceiptTheme)=escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone,p.saleLogoEnabled)
 
 fun kitchenReceipt(s:PendingSale,p:CompanyProfile,t:ReceiptTheme):ByteArray{
     val o=ByteArrayOutputStream(); fun w(x:String){o.write(x.toByteArray(Charsets.UTF_8))}
