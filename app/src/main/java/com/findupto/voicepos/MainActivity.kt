@@ -20,14 +20,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: Store
     private lateinit var printer: PrinterManager
     private val heard = mutableStateOf("")
-    private val voiceStatus = mutableStateOf("Ready for offline voice")
+    private val voiceStatus = mutableStateOf("Ready for voice")
     private var recognizer: SpeechRecognizer? = null
 
     private val exportMenuLauncher = registerForActivityResult(CreateDocument("text/csv")) { uri -> uri?.let { writeMenuCsv(it) } }
     private val importMenuLauncher = registerForActivityResult(OpenDocument()) { uri -> uri?.let { readMenuCsv(it) } }
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        voiceStatus.value = if (canUseOfflineVoice()) "Offline voice ready" else "Offline voice model unavailable"
+        voiceStatus.value = if (canUseVoice()) "Voice ready" else "Voice service unavailable"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,27 +57,16 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        ensureOfflineVoicePack()
     }
 
-    private fun canUseOfflineVoice(): Boolean =
-        Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-
-    private fun ensureOfflineVoicePack() {
-        if (Build.VERSION.SDK_INT < 31 || canUseOfflineVoice()) return
-        voiceStatus.value = "Speech language pack missing — opening Android speech settings"
-        val prefs = getSharedPreferences("voice_pos_v4", MODE_PRIVATE)
-        if (!prefs.getBoolean("speech_settings_prompted", false)) {
-            prefs.edit().putBoolean("speech_settings_prompted", true).apply()
-            runCatching { startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
-                .onFailure { runCatching { startActivity(Intent("com.android.settings.SPEECH_RECOGNITION_SETTINGS")) } }
-        }
-    }
+    // Use Android's built-in speech service. Do not require an on-device language
+    // model/package, so the app does not send the user to download a voice pack.
+    private fun canUseVoice(): Boolean = SpeechRecognizer.isRecognitionAvailable(this)
 
     private fun listen() {
-        if (!canUseOfflineVoice()) {
-            voiceStatus.value = "Offline voice needs Android 12+ with the speech language pack installed"
-            ensureOfflineVoicePack()
+        if (!canUseVoice()) {
+            voiceStatus.value = "Android voice service is unavailable"
+            openSpeechSettings()
             return
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -87,28 +76,28 @@ class MainActivity : ComponentActivity() {
         }
 
         recognizer?.destroy()
-        recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this).apply {
+        recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
             setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "Listening offline…" }
+                override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "Listening…" }
                 override fun onBeginningOfSpeech() { voiceStatus.value = "Listening…" }
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEndOfSpeech() { voiceStatus.value = "Processing offline…" }
+                override fun onEndOfSpeech() { voiceStatus.value = "Processing…" }
                 override fun onError(error: Int) {
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH -> "No speech heard — try again"
                         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening timed out — try again"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required"
-                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "English (Pakistan) speech pack is unavailable"
-                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "English (Pakistan) speech pack is unavailable"
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "English (Pakistan) is unavailable — try English"
+                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "English speech is unavailable — try again"
                         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer is busy — try again"
-                        else -> "Offline voice error — check the speech language pack"
+                        else -> "Voice error — try again"
                     }
                 }
                 override fun onResults(results: Bundle?) {
                     heard.value = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull().orEmpty()
-                    voiceStatus.value = if (heard.value.isBlank()) "Ready for offline voice" else "Voice captured offline"
+                    voiceStatus.value = if (heard.value.isBlank()) "Ready for voice" else "Voice captured"
                 }
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -118,7 +107,6 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-PK")
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         }
         recognizer?.startListening(intent)
@@ -127,7 +115,7 @@ class MainActivity : ComponentActivity() {
     private fun openSpeechSettings() {
         val intent = Intent("com.android.settings.SPEECH_RECOGNITION_SETTINGS")
         runCatching { startActivity(intent) }.onFailure {
-            startActivity(Intent("android.settings.SETTINGS"))
+            startActivity(Intent(Settings.ACTION_SETTINGS))
         }
     }
 
