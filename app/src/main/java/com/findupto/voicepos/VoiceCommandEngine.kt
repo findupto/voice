@@ -74,30 +74,21 @@ object VoiceCommandEngine {
             if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
         }
 
-        // Prefer products already defined in the menu for natural spoken orders.
-        menu.sortedByDescending { (it.name + " " + it.variant + " " + it.size).length }.forEach { product ->
-            val label = listOf(product.name, product.variant, product.size).filter { it.isNotBlank() }.joinToString(" ")
-            val escaped = Regex.escape(label.lowercase(Locale.US))
-            val nameEscaped = Regex.escape(product.name.lowercase(Locale.US))
-            Regex("""(?:^|\b)(\d+)\s+(?:x\s+)?$escaped(?:\s+each)?(?=$|\b|,|;|\band\b|\bthen\b)""", RegexOption.IGNORE_CASE)
-                .findAll(s).forEach { m ->
-                    val qty = m.groupValues[1].toIntOrNull() ?: 0
-                    if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
-                }
-            if (Regex("""\b(?:add|order)\s+(?:\d+\s+)?(?:x\s+)?$escaped(?:\s+each)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
-                out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
-            Regex("""\b(?:add|order)?\s*(\d+)\s*x\s+$nameEscaped\b""", RegexOption.IGNORE_CASE).findAll(s).forEach { m ->
-                val qty = m.groupValues[1].toIntOrNull() ?: 0
-                if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
-            }
-            if (Regex("""^(?:add|order)?\s*$nameEscaped$""", RegexOption.IGNORE_CASE).matches(s.trim()))
-                out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
-            if (Regex("""^\d+\s+$nameEscaped(?:\s+each)?$""", RegexOption.IGNORE_CASE).matches(s)) {
-                val qty = s.substringBefore(" ").toIntOrNull() ?: 0
-                if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
+                // Strong menu detection: normalize punctuation and tolerate natural filler words.
+        fun norm(x:String)=x.lowercase(Locale.US).replace("&"," and ").replace(Regex("[^a-z0-9]+")," ").trim().replace(Regex("\\s+")," ")
+        val normalized=norm(s)
+        menu.sortedByDescending { (it.name+" "+it.variant+" "+it.size).length }.forEach { product ->
+            val label=norm(listOf(product.name,product.variant,product.size).filter{it.isNotBlank()}.joinToString(" "))
+            val qty=Regex("\\b(\\d+)\\s+(?:x\\s+)?"+Regex.escape(label)+"\\b").find(normalized)?.groupValues?.get(1)?.toIntOrNull()
+            val commandQty=Regex("\\b(?:add|order|give|make|take|get)\\s+(?:me\\s+)?(\\d+)?\\s*(?:x\\s+)?"+Regex.escape(label)+"\\b").find(normalized)?.groupValues?.get(1)?.toIntOrNull()
+            if(qty!=null && qty>0) out += VoiceCommand.Add(SaleItem(product.name,qty,product.price))
+            else if(commandQty!=null && commandQty>0) out += VoiceCommand.Add(SaleItem(product.name,commandQty,product.price))
+            else {
+                val tokens=norm(product.name).split(" ").filter{it.length>1}
+                if(tokens.isNotEmpty() && tokens.all { normalized.contains(Regex("\\b"+Regex.escape(it)+"\\b")) } && !out.any { it is VoiceCommand.Add && it.item.name.equals(product.name,true) })
+                    out += VoiceCommand.Add(SaleItem(product.name,1,product.price))
             }
         }
-
         if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
         return out.distinctBy { it.toString() }
     }
