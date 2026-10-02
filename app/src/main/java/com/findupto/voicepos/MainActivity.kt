@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
     private val heard = mutableStateOf("")
     private val voiceStatus = mutableStateOf("Ready for voice")
     private var recognizer: SpeechRecognizer? = null
+    private var voiceRetryUsed = false
 
     private val exportMenuLauncher = registerForActivityResult(CreateDocument("text/csv")) { uri -> uri?.let { writeMenuCsv(it) } }
     private val importMenuLauncher = registerForActivityResult(OpenDocument()) { uri -> uri?.let { readMenuCsv(it) } }
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
         printer = PrinterManager(this)
 
         val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT < 31) permissionsToRequest += Manifest.permission.ACCESS_FINE_LOCATION
         if (Build.VERSION.SDK_INT >= 31) {
             permissionsToRequest += Manifest.permission.BLUETOOTH_SCAN
             permissionsToRequest += Manifest.permission.BLUETOOTH_CONNECT
@@ -64,6 +66,11 @@ class MainActivity : ComponentActivity() {
     private fun canUseVoice(): Boolean = SpeechRecognizer.isRecognitionAvailable(this)
 
     private fun listen() {
+        voiceRetryUsed = false
+        startVoiceListening()
+    }
+
+    private fun startVoiceListening() {
         if (!canUseVoice()) {
             voiceStatus.value = "Android voice service is unavailable"
             openSpeechSettings()
@@ -85,8 +92,16 @@ class MainActivity : ComponentActivity() {
                 override fun onEndOfSpeech() { voiceStatus.value = "Processing…" }
                 override fun onError(error: Int) {
                     voiceStatus.value = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH -> "No speech heard — try again"
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening timed out — try again"
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                            if (!voiceRetryUsed) {
+                                voiceRetryUsed = true
+                                voiceStatus.value = "Could not hear you — listening again…"
+                                recognizer?.cancel()
+                                android.os.Handler(mainLooper).postDelayed({ startVoiceListening() }, 350)
+                                return
+                            }
+                            "No voice heard — tap Voice to try again or use Manual Add"
+                        }
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required"
                         SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "Speech language unavailable — use Manual Mode"
                         SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Speech language unavailable — use Manual Mode"
@@ -106,7 +121,7 @@ class MainActivity : ComponentActivity() {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-PK")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800)
