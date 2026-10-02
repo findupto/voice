@@ -25,15 +25,26 @@ class PrinterManager(private val context: Context) {
             if (adapter?.isDiscovering == true) adapter.cancelDiscovery()
             Handler(context.mainLooper).postDelayed({
                 runCatching {
+                    found.clear()
+                    refresh()
                     discovering = adapter?.startDiscovery() == true
+                    if (discovering) {
+                        Handler(context.mainLooper).postDelayed({
+                            if (discovering) {
+                                runCatching { adapter?.cancelDiscovery() }
+                                discovering = false
+                                refresh()
+                            }
+                        }, 12000)
+                    }
                 }.onFailure { discovering = false }
-            }, 150)
+            }, 250)
         }.onFailure { discovering = false }
     }
 
     fun discoverNow() {
         refresh()
-        discover()
+        Handler(context.mainLooper).post { discover() }
     }
     fun device(address:String)=devices.firstOrNull{it.address==address}
     private fun connect(old:BluetoothSocket?,d:BluetoothDevice)=runCatching{old?.close();d.createRfcommSocketToServiceRecord(spp).also{it.connect()}}.getOrNull()
