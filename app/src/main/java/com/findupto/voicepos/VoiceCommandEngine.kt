@@ -18,20 +18,15 @@ sealed class VoiceCommand {
     data object PayLast : VoiceCommand()
     data class Remove(val name: String) : VoiceCommand()
     data class Quantity(val name: String, val delta: Int) : VoiceCommand()
-    data class SetQuantity(val name: String, val qty: Int) : VoiceCommand()
 }
 
 object VoiceCommandEngine {
-    private val numberWords = mapOf("zero" to 0,"one" to 1,"two" to 2,"three" to 3,"four" to 4,"five" to 5,"six" to 6,"seven" to 7,"eight" to 8,"nine" to 9,"ten" to 10)
-    private val filler = Regex("\\b(please|pls|for me|me|the|some|a|an|of|item|items|product|products)\\b", RegexOption.IGNORE_CASE)
+    private val numberWords=mapOf("zero" to 0,"one" to 1,"two" to 2,"three" to 3,"four" to 4,"five" to 5,"six" to 6,"seven" to 7,"eight" to 8,"nine" to 9,"ten" to 10)
     private fun norm(x:String)=x.lowercase(Locale.US).replace("&"," and ").replace(Regex("[^a-z0-9]+")," ").trim().replace(Regex("\\s+")," ")
-    private fun words(x:String)=norm(x).split(" ").filter{it.length>1}
-    private fun distance(a:String,b:String):Int { val d=Array(a.length+1){IntArray(b.length+1)};for(i in 0..a.length)d[i][0]=i;for(j in 0..b.length)d[0][j]=j;for(i in 1..a.length)for(j in 1..b.length)d[i][j]=minOf(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+if(a[i-1]==b[j-1])0 else 1);return d[a.length][b.length] }
-    private fun bestMenu(text:String,menu:List<MenuItem>):MenuItem? {
-        val q=norm(text).replace(filler,"").trim();if(q.isBlank())return null
-        return menu.map{p->val label=norm(listOf(p.name,p.variant,p.size).filter{it.isNotBlank()}.joinToString(" "));val qw=words(q);val lw=words(label);val overlap=qw.count{a->lw.any{b->a==b||(a.length>=4&&b.length>=4&&(a.contains(b)||b.contains(a)))}};Triple(p,overlap.toDouble()/qw.size.coerceAtLeast(1)+if(q==label)1.0 else 0.0,distance(q,label))}.maxWithOrNull(compareBy<Triple<MenuItem,Double,Int>>{it.second}.thenBy{it.third})?.takeIf{it.second>=0.5||it.third<=2}?.first
-    }
-    fun parse(raw:String,menu:List<MenuItem> = emptyList()):List<VoiceCommand> {
+    private fun distance(a:String,b:String):Int{val d=Array(a.length+1){IntArray(b.length+1)};for(i in 0..a.length)d[i][0]=i;for(j in 0..b.length)d[0][j]=j;for(i in 1..a.length)for(j in 1..b.length)d[i][j]=minOf(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+if(a[i-1]==b[j-1])0 else 1);return d[a.length][b.length]}
+    private fun bestMenu(text:String,menu:List<MenuItem>):MenuItem?{val q=norm(text);if(q.isBlank())return null;return menu.map{p->val label=norm(listOf(p.name,p.variant,p.size).filter{it.isNotBlank()}.joinToString(" "));val qw=q.split(" ");val lw=label.split(" ");val overlap=qw.count{a->lw.any{b->a==b||(a.length>=4&&b.length>=4&&(a.contains(b)||b.contains(a)))}};Triple(p,overlap.toDouble()/qw.size.coerceAtLeast(1)+if(q==label)1.0 else 0.0,distance(q,label))}.maxWithOrNull(compareBy<Triple<MenuItem,Double,Int>>{it.second}.thenBy{it.third})?.takeIf{it.second>=0.5||it.third<=2}?.first}
+
+    fun parse(raw:String,menu:List<MenuItem> = emptyList()):List<VoiceCommand>{
         var s=raw.lowercase(Locale.US).replace(Regex("[!?]+")," ").replace(Regex("\\brupees?\\b"),"rs").replace("rs.","rs").trim();numberWords.forEach{(w,n)->s=s.replace(Regex("\\b$w\\b"),n.toString())};val out=mutableListOf<VoiceCommand>()
         if(Regex("\\b(clear|empty|cancel|start over|reset)\\b.*\\b(cart|order)\\b|\\bnew order\\b").containsMatchIn(s))out+=VoiceCommand.Clear
         if(Regex("\\b(show|open|go to)\\s+(sales|sale history)\\b").containsMatchIn(s))out+=VoiceCommand.Sales
@@ -43,11 +38,10 @@ object VoiceCommandEngine {
         if(Regex("\\b(pay|paid|payment|settle)\\s+(last|latest|order)\\b|\\bpay last\\b").containsMatchIn(s))out+=VoiceCommand.PayLast
         if(Regex("\\b(checkout|complete|finish|place|send|print)\\b.*\\b(order|bill|kitchen|receipt)\\b|\\bplace order\\b").containsMatchIn(s))out+=VoiceCommand.CompletePrint
         Regex("\\b(?:remove|delete|cancel)\\s+(?:item|product)?\\s*(.+)$").find(s)?.let{out+=VoiceCommand.Remove(it.groupValues[1].trim())}
-        Regex("\\b(?:set|change)\\s+(?:quantity|qty)\\s+(?:of\\s+)?(.+?)\\s+(?:to|=)\\s*(\\d+)\\b").find(s)?.let{m->out+=VoiceCommand.SetQuantity(m.groupValues[1].trim(),m.groupValues[2].toInt())}
         Regex("\\b(?:increase|add)\\s+(?:quantity of )?(.+?)\\s+by\\s+(\\d+)\\b").find(s)?.let{out+=VoiceCommand.Quantity(it.groupValues[1].trim(),it.groupValues[2].toInt())}
         Regex("\\b(?:decrease|reduce)\\s+(?:quantity of )?(.+?)\\s+by\\s+(\\d+)\\b").find(s)?.let{out+=VoiceCommand.Quantity(it.groupValues[1].trim(),-it.groupValues[2].toInt())}
         val segments=s.split(Regex("\\s*(?:,|;|\\band then\\b|\\bthen\\b|\\band\\b)\\s*")).map{it.trim()}.filter{it.isNotBlank()};val priceRx=Regex("(?:rs\\s*)?(\\d+(?:[.,]\\d{1,2})?)\\s*(?:each|per item)?$",RegexOption.IGNORE_CASE)
-        for(seg0 in segments){var seg=seg0.replace(Regex("^(add|order|give|make|get|take|put|include)\\s+"),"").trim();val pm=priceRx.find(seg);val price=pm?.groupValues?.get(1)?.replace(",","")?.toDoubleOrNull();if(pm!=null)seg=seg.substring(0,pm.range.first).trim();val qm=Regex("^(\\d+)\\s*(?:x|times)?\\s+(.+)$",RegexOption.IGNORE_CASE).find(seg);val qty=(qm?.groupValues?.get(1)?.toIntOrNull()?:1).coerceAtLeast(1);val name=qm?.groupValues?.get(2)?.trim()?:seg;if(name.isBlank()||name.matches(Regex("(?i)(add|order|please|something|it|that)")))continue;val product=bestMenu(name,menu);if(product!=null)out+=VoiceCommand.Add(SaleItem(product.name,qty,product.price))else if(price!=null&&price>0)out+=VoiceCommand.Add(SaleItem(name,qty,price))}
+        for(seg0 in segments){var seg=seg0.replace(Regex("^(add|order|give|make|get|take|put|include)\\s+"),"").trim();val pm=priceRx.find(seg);val price=pm?.groupValues?.get(1)?.replace(",","")?.toDoubleOrNull();if(pm!=null)seg=seg.substring(0,pm.range.first).trim();val qm=Regex("^(\\d+)\\s*(?:x|times)?\\s+(.+)$",RegexOption.IGNORE_CASE).find(seg);val qty=(qm?.groupValues?.get(1)?.toIntOrNull()?:1).coerceAtLeast(1);val name=qm?.groupValues?.get(2)?.trim()?:seg;if(name.isBlank())continue;val product=bestMenu(name,menu);if(product!=null)out+=VoiceCommand.Add(SaleItem(product.name,qty,product.price))else if(price!=null&&price>0)out+=VoiceCommand.Add(SaleItem(name,qty,price))}
         return out.distinctBy{it.toString()}
     }
 }
