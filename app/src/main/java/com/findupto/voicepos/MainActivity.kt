@@ -24,6 +24,8 @@ class MainActivity : ComponentActivity() {
     private var recognizer: SpeechRecognizer? = null
     private var voiceRetryCount = 0
     private var listening = false
+    private var recognitionMode = 0 // 0 = system, 1 = on-device
+    private val voiceHandler by lazy { android.os.Handler(mainLooper) }
 
     private val exportMenuLauncher = registerForActivityResult(CreateDocument("text/csv")) { uri -> uri?.let { writeMenuCsv(it) } }
     private val importMenuLauncher = registerForActivityResult(OpenDocument()) { uri -> uri?.let { readMenuCsv(it) } }
@@ -68,6 +70,7 @@ class MainActivity : ComponentActivity() {
 
     private fun listen() {
         voiceRetryCount = 0
+        recognitionMode = 0
         startVoiceListening()
     }
 
@@ -88,7 +91,11 @@ class MainActivity : ComponentActivity() {
         }
 
         recognizer?.destroy()
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+        recognizer = if (recognitionMode == 1 && Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        }.apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) { listening = true; voiceStatus.value = "Listening… Speak now" }
                 override fun onBeginningOfSpeech() { listening = true; voiceStatus.value = "Listening… Speak now" }
@@ -97,24 +104,32 @@ class MainActivity : ComponentActivity() {
                 override fun onEndOfSpeech() { listening = false; voiceStatus.value = "Processing…" }
                 override fun onError(error: Int) {
                     listening = false
-                    voiceStatus.value = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                            if (voiceRetryCount < 2) {
-                                voiceRetryCount++
-                                voiceStatus.value = "Still listening… please speak clearly"
-                                android.os.Handler(mainLooper).postDelayed({ startVoiceListening() }, 1200)
-                                return
+                    val retryable = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                        error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                        error == SpeechRecognizer.ERROR_NETWORK ||
+                        error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
+                        error == SpeechRecognizer.ERROR_SERVER ||
+                        error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED
+                    if (retryable && voiceRetryCount < 1) {
+                        voiceRetryCount++
+                        voiceStatus.value = "Voice method failed — trying another method…"
+                        voiceHandler.postDelayed({
+                            if (recognitionMode == 0 && Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this@MainActivity)) {
+                                recognitionMode = 1
+                                startVoiceListening()
+                            } else {
+                                voiceStatus.value = "No voice heard — use Manual Add"
                             }
-                            "No voice detected — tap Voice and speak immediately, or use Manual Add"
-                        }
-                        SpeechRecognizer.ERROR_AUDIO -> "Microphone could not start — check microphone access"
-                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Voice service/network unavailable — use Manual Add"
-                        SpeechRecognizer.ERROR_SERVER, SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "Voice service disconnected — use Manual Add"
+                        }, 500)
+                        return
+                    }
+                    voiceStatus.value = when (error) {
+                        SpeechRecognizer.ERROR_AUDIO -> "Microphone could not start — use Manual Add"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required"
-                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "Speech language unavailable — use Manual Mode"
-                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Speech language unavailable — use Manual Mode"
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer is busy — try again"
-                        else -> "Voice error — try again"
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Speech language unavailable — use Manual Add"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer is busy — use Manual Add"
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No voice heard — use Manual Add"
+                        else -> "Voice error — use Manual Add"
                     }
                 }
                 override fun onResults(results: Bundle?) {
@@ -131,7 +146,7 @@ class MainActivity : ComponentActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             // Use the device/Google Speech language configuration.
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
