@@ -28,6 +28,7 @@ object VoiceCommandEngine {
 
     fun parse(raw: String, menu: List<MenuItem> = emptyList()): List<VoiceCommand> {
         var s = raw.lowercase(Locale.US)
+            .replace(Regex("""[!?]+"""), " ")
             .replace(Regex("""\brupees?\b"""), "rs")
             .replace("rs.", "rs")
             .trim()
@@ -73,6 +74,7 @@ object VoiceCommandEngine {
             if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
         }
 
+        // Prefer products already defined in the menu for natural spoken orders.
         menu.sortedByDescending { (it.name + " " + it.variant + " " + it.size).length }.forEach { product ->
             val label = listOf(product.name, product.variant, product.size).filter { it.isNotBlank() }.joinToString(" ")
             val escaped = Regex.escape(label.lowercase(Locale.US))
@@ -83,6 +85,12 @@ object VoiceCommandEngine {
                     if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
                 }
             if (Regex("""\b(?:add|order)\s+(?:\d+\s+)?(?:x\s+)?$escaped(?:\s+each)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
+                out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
+            Regex("""\b(?:add|order)?\s*(\d+)\s*x\s+$nameEscaped\b""", RegexOption.IGNORE_CASE).findAll(s).forEach { m ->
+                val qty = m.groupValues[1].toIntOrNull() ?: 0
+                if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
+            }
+            if (Regex("""^(?:add|order)?\s*$nameEscaped$""", RegexOption.IGNORE_CASE).matches(s.trim()))
                 out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
             if (Regex("""^\d+\s+$nameEscaped(?:\s+each)?$""", RegexOption.IGNORE_CASE).matches(s)) {
                 val qty = s.substringBefore(" ").toIntOrNull() ?: 0
