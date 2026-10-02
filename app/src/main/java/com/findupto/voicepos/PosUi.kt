@@ -263,6 +263,61 @@ private fun QuickSale(
 
 
 @Composable
+private fun ManualCartDialog(menu: List<MenuItem>, cart: List<SaleItem>, add: (MenuItem) -> Unit, close: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val filtered = menu.filter {
+        it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true)
+    }
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Manual Add Products") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    query,
+                    { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Search product") },
+                    singleLine = true
+                )
+                if (filtered.isEmpty()) {
+                    Text("No products found. Add products from Menu first.")
+                } else {
+                    LazyColumn {
+                        items(filtered) { item ->
+                            Card(
+                                Modifier.fillMaxWidth().clickable { add(item) }
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(item.name, fontWeight = FontWeight.SemiBold)
+                                        val detail = listOf(item.variant, item.size)
+                                            .filter { it.isNotBlank() }
+                                            .joinToString(" • ")
+                                        if (detail.isNotBlank()) {
+                                            Text(detail, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Text(money(item.price), style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Icon(Icons.Default.AddCircleOutline, "Add")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = close) { Text("DONE") } }
+    )
+}
+
+@Composable
 private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, addToCart: (MenuItem) -> Unit) {
     var adding by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
