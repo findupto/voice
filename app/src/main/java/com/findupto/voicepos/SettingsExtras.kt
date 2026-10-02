@@ -1,0 +1,37 @@
+package com.findupto.voicepos
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun PrinterSettingsDialog(store: Store, printer: PrinterManager, close: () -> Unit) {
+    AlertDialog(onDismissRequest=close,title={Text("Printer Settings")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        Text("Receipt Printer",fontWeight=FontWeight.Bold);Text(if(printer.customerConnected)"Connected ✓" else "Not connected",style=MaterialTheme.typography.bodySmall)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button(onClick={printer.discoverNow()},Modifier.weight(1f)){Icon(Icons.Default.Bluetooth,null);Spacer(Modifier.width(4.dp));Text(if(printer.discovering)"SCANNING…" else "SCAN")};OutlinedButton(onClick={printer.refresh()},Modifier.weight(1f)){Text("REFRESH")}}
+        Text("Select printer for customer receipts",style=MaterialTheme.typography.labelMedium)
+        LazyColumn(Modifier.heightIn(max=260.dp)){items(printer.devices){d->val name=runCatching{d.name}.getOrNull().orEmpty().ifBlank{"Bluetooth printer"};val selected=store.customerPrinterAddress()==d.address;Card(Modifier.fillMaxWidth().padding(vertical=3.dp)){Column(Modifier.padding(10.dp)){Text(name,fontWeight=FontWeight.SemiBold);Text(d.address,style=MaterialTheme.typography.bodySmall);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){Button(onClick={printer.connectCustomer(d)},Modifier.weight(1f)){Text(if(selected)"RECONNECT" else "USE RECEIPT")};OutlinedButton(onClick={printer.connectKitchen(d)},Modifier.weight(1f)){Text("USE KITCHEN")}}}}}}
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={printer.testCustomer()},Modifier.weight(1f),enabled=printer.customerConnected){Text("TEST RECEIPT")};OutlinedButton(onClick={printer.testKitchen()},Modifier.weight(1f),enabled=printer.kitchenConnected){Text("TEST KITCHEN")}}
+        Text("Pair the thermal printer in Android Bluetooth first. VoicePOS supports standard Bluetooth ESC/POS printers.",style=MaterialTheme.typography.bodySmall)
+    }},confirmButton={TextButton(onClick=close){Text("DONE")}})
+}
+
+@Composable
+fun BusinessSettingsDialog(store: Store, close: () -> Unit) {
+    val initial=store.profile();var symbol by remember{mutableStateOf(initial.currencySymbol)};var code by remember{mutableStateOf(initial.currencyCode)};var taxEnabled by remember{mutableStateOf(initial.taxEnabled)};var taxRate by remember{mutableStateOf(initial.taxRate.toString().trimEnd('0').trimEnd('.'))};var taxLabel by remember{mutableStateOf(initial.taxLabel)}
+    AlertDialog(onDismissRequest=close,title={Text("Tax & Currency")},text={Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(9.dp)){
+        Text("Currency",fontWeight=FontWeight.Bold);OutlinedTextField(symbol,{symbol=it},label={Text("Currency symbol")},singleLine=true,modifier=Modifier.fillMaxWidth());OutlinedTextField(code,{code=it.uppercase().take(3)},label={Text("Currency code")},singleLine=true,modifier=Modifier.fillMaxWidth())
+        HorizontalDivider();Text("Tax",fontWeight=FontWeight.Bold);Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("Enable tax",Modifier.weight(1f));Switch(taxEnabled,{taxEnabled=it})};OutlinedTextField(taxLabel,{taxLabel=it},label={Text("Tax label")},singleLine=true,modifier=Modifier.fillMaxWidth());OutlinedTextField(taxRate,{taxRate=it.filter{c->c.isDigit()||c=='.'}},label={Text("Tax rate %")},singleLine=true,modifier=Modifier.fillMaxWidth());Text("Example: PKR / Rs with 15% GST",style=MaterialTheme.typography.bodySmall)
+    }},confirmButton={TextButton(onClick={val rate=taxRate.toDoubleOrNull()?.coerceAtLeast(0.0)?:0.0;store.saveProfile(initial.copy(currencySymbol=symbol.trim().ifBlank{"Rs"},currencyCode=code.trim().ifBlank{"PKR"}.uppercase(),taxEnabled=taxEnabled,taxRate=rate,taxLabel=taxLabel.trim().ifBlank{"Tax"}));close()}){Text("SAVE")}},dismissButton={TextButton(onClick=close){Text("CANCEL")}})
+}
