@@ -1,5 +1,4 @@
 name: Build Android APK
-# Build and repair source before packaging
 on:
   push:
     branches: ["main"]
@@ -12,6 +11,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
@@ -27,20 +28,17 @@ jobs:
           rm -f app/src/main/java/com/findupto/voicepos/PosUiExtras.kt
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('app/src/main/java/com/findupto/voicepos/PosUi.kt')
-          s=p.read_text()
+          p=Path('app/src/main/java/com/findupto/voicepos/PosUi.kt'); s=p.read_text()
           s=s.replace('    pickLogo: () -> Unit\n) {','    pickLogo: () -> Unit,\n    scanDocument: () -> Unit,\n    exportBackup: () -> Unit,\n    importBackup: () -> Unit\n) {')
           s=s.replace('MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu) { item ->','MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu, scanDocument = scanDocument) { item ->')
           s=s.replace('if (settings) SettingsPage(store, printer, pickLogo) { settings = false; tick++ }','if (settings) SettingsPage(store, printer, pickLogo, exportBackup, importBackup) { settings = false; tick++ }')
           s=s.replace('private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, addToCart: (MenuItem) -> Unit) {','private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, scanDocument: () -> Unit, addToCart: (MenuItem) -> Unit) {')
           marker='        Text("Add multiple rows for the same product to create different variants/sizes and prices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)'
-          s=s.replace(marker, '        OutlinedButton(onClick = scanDocument, modifier = Modifier.fillMaxWidth()) {\n            Icon(Icons.Default.DocumentScanner, null)\n            Spacer(Modifier.width(6.dp))\n            Text("AI SCAN IMAGE / PDF → ADD PRODUCTS")\n        }\n'+marker)
+          s=s.replace(marker,'        OutlinedButton(onClick = scanDocument, modifier = Modifier.fillMaxWidth()) {\n            Icon(Icons.Default.DocumentScanner, null)\n            Spacer(Modifier.width(6.dp))\n            Text("AI SCAN IMAGE / PDF → ADD PRODUCTS")\n        }\n'+marker)
           s=s.replace('private fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, close: () -> Unit) {','private fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, exportBackup: () -> Unit, importBackup: () -> Unit, close: () -> Unit) {')
           marker2='                Text("Company", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)'
           backup='''                Text("Business Data Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)\n                Text("Move your menu, sales, pending orders, expenses, cash, company profile, receipt settings and logo to another phone.", style = MaterialTheme.typography.bodySmall)\n                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {\n                    Button(onClick = exportBackup, modifier = Modifier.weight(1f)) { Text("EXPORT BACKUP") }\n                    OutlinedButton(onClick = importBackup, modifier = Modifier.weight(1f)) { Text("IMPORT BACKUP") }\n                }\n'''
-          s=s.replace(marker2, backup+marker2)
-          p.write_text(s)
-          Path('app/src/main/java/com/findupto/voicepos/PosUiExtras.kt').unlink(missing_ok=True)
+          s=s.replace(marker2,backup+marker2); p.write_text(s)
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
