@@ -218,6 +218,18 @@ private fun QuickSale(
                     IconButton(onClick = listen) { Icon(Icons.Default.MicNone, "Listen") }
                 }
                 AssistChip(onClick = listen, label = { Text(voiceStatus) }, leadingIcon = { Icon(Icons.Default.WifiOff, null) })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = manual, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Keyboard, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("MANUAL ADD")
+                    }
+                    OutlinedButton(onClick = listen, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Mic, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("TRY VOICE")
+                    }
+                }
                 if (voiceStatus.contains("error", true) || voiceStatus.contains("pack", true) || voiceStatus.contains("unavailable", true)) {
                     OutlinedButton(onClick = openSpeechSettings, modifier = Modifier.fillMaxWidth()) { Text("Check / Download Speech Language Pack") }
                 }
