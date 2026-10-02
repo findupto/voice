@@ -191,6 +191,9 @@ fun PosApp(
     if (manualCart) ManualCartDialog(menu, cart, { item ->
         val index = cart.indexOfFirst { it.name.equals(item.name, true) && it.price == item.price }
         cart = if (index >= 0) cart.toMutableList().also { list -> list[index] = list[index].copy(qty = list[index].qty + 1) } else cart + SaleItem(item.name, 1, item.price)
+    }, { name, qty, price ->
+        val index = cart.indexOfFirst { it.name.equals(name, true) && it.price == price }
+        cart = if (index >= 0) cart.toMutableList().also { list -> list[index] = list[index].copy(qty = list[index].qty + qty) } else cart + SaleItem(name, qty, price)
     }, { manualCart = false })
 }
 
@@ -275,8 +278,17 @@ private fun QuickSale(
 
 
 @Composable
-private fun ManualCartDialog(menu: List<MenuItem>, cart: List<SaleItem>, add: (MenuItem) -> Unit, close: () -> Unit) {
+private fun ManualCartDialog(
+    menu: List<MenuItem>,
+    cart: List<SaleItem>,
+    add: (MenuItem) -> Unit,
+    addCustom: (String, Int, Double) -> Unit,
+    close: () -> Unit
+) {
     var query by remember { mutableStateOf("") }
+    var customName by remember { mutableStateOf("") }
+    var customPrice by remember { mutableStateOf("") }
+    var customQty by remember { mutableStateOf("1") }
     val filtered = menu.filter {
         it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true)
     }
@@ -285,44 +297,46 @@ private fun ManualCartDialog(menu: List<MenuItem>, cart: List<SaleItem>, add: (M
         title = { Text("Manual Add Products") },
         text = {
             Column(
-                Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    query,
-                    { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Search product") },
-                    singleLine = true
-                )
-                if (filtered.isEmpty()) {
-                    Text("No products found. Add products from Menu first.")
-                } else {
-                    LazyColumn {
-                        items(filtered) { item ->
-                            Card(
-                                Modifier.fillMaxWidth().clickable { add(item) }
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(item.name, fontWeight = FontWeight.SemiBold)
-                                        val detail = listOf(item.variant, item.size)
-                                            .filter { it.isNotBlank() }
-                                            .joinToString(" • ")
-                                        if (detail.isNotBlank()) {
-                                            Text(detail, style = MaterialTheme.typography.bodySmall)
-                                        }
-                                        Text(money(item.price), style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Icon(Icons.Default.AddCircleOutline, "Add")
+                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search menu product") }, singleLine = true)
+                if (filtered.isNotEmpty()) {
+                    Text("From Menu", fontWeight = FontWeight.Bold)
+                    filtered.forEach { item ->
+                        Card(Modifier.fillMaxWidth().clickable { add(item) }) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.name, fontWeight = FontWeight.SemiBold)
+                                    val detail = listOf(item.variant, item.size).filter { it.isNotBlank() }.joinToString(" • ")
+                                    if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall)
+                                    Text(money(item.price), style = MaterialTheme.typography.bodySmall)
                                 }
+                                Icon(Icons.Default.AddCircleOutline, "Add")
                             }
                         }
                     }
                 }
+                HorizontalDivider()
+                Text("Custom Product", fontWeight = FontWeight.Bold)
+                OutlinedTextField(customName, { customName = it }, label = { Text("Product name") }, singleLine = true)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(customQty, { customQty = it.filter(Char::isDigit) }, label = { Text("Qty") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedTextField(customPrice, { customPrice = it }, label = { Text("Price") }, modifier = Modifier.weight(1f), singleLine = true)
+                }
+                Button(
+                    onClick = {
+                        val qty = customQty.toIntOrNull() ?: 0
+                        val price = customPrice.toDoubleOrNull() ?: 0.0
+                        if (customName.isNotBlank() && qty > 0 && price > 0) {
+                            addCustom(customName.trim(), qty, price)
+                            customName = ""
+                            customPrice = ""
+                            customQty = "1"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("ADD CUSTOM PRODUCT") }
             }
         },
         confirmButton = { TextButton(onClick = close) { Text("DONE") } }
