@@ -1,4 +1,4 @@
-name: Fix Settings Form
+name: Fix POS Compose fields
 on:
   push:
     branches: [main]
@@ -9,59 +9,62 @@ permissions:
   contents: write
 jobs:
   fix:
-    if: ${{ !contains(github.event.head_commit.message, 'Fix settings form compile') }}
+    if: ${{ !contains(github.event.head_commit.message, 'Fix POS Compose fields') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with: {fetch-depth: 0}
-      - name: Replace settings screen with explicit Compose arguments
+      - name: Fix positional OutlinedTextField calls
         shell: python
         run: |
           from pathlib import Path
           import re
           p=Path('app/src/main/java/com/findupto/voicepos/PosUiComponents.kt')
           s=p.read_text()
-          new='''@Composable
-          fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, exportBackup: () -> Unit, importBackup: () -> Unit, close: () -> Unit) {
-              var profile by remember { mutableStateOf(store.profile()) }
-              var theme by remember { mutableStateOf(store.theme()) }
+          start=s.index('@Composable\nfun ManualCartDialog')
+          end=s.index('@Composable\nfun MenuPage', start)
+          block='''@Composable
+          fun ManualCartDialog(menu: List<MenuItem>, add: (MenuItem) -> Unit, addCustom: (String, Int, Double) -> Unit, close: () -> Unit) {
+              var query by remember { mutableStateOf("") }
+              var name by remember { mutableStateOf("") }
+              var qty by remember { mutableStateOf("1") }
+              var price by remember { mutableStateOf("") }
+              val filtered = menu.filter { it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true) }
               AlertDialog(
                   onDismissRequest = close,
-                  title = { Text("Settings") },
+                  title = { Text("Add Product") },
                   text = {
-                      Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                          Text("Business Transfer", fontWeight = FontWeight.Bold)
-                          Row(Modifier.fillMaxWidth()) {
-                              Button(onClick = exportBackup, modifier = Modifier.weight(1f)) { Text("EXPORT") }
-                              OutlinedButton(onClick = importBackup, modifier = Modifier.weight(1f)) { Text("IMPORT") }
+                      Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                          OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search menu") }, singleLine = true)
+                          filtered.take(20).forEach { item ->
+                              Card(Modifier.fillMaxWidth().clickable { add(item) }) {
+                                  Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                      Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text(listOf(item.variant, item.size).filter(String::isNotBlank).joinToString(" • ")); Text(money(item.price)) }
+                                      Icon(Icons.Default.Add, null)
+                                  }
+                              }
                           }
-                          OutlinedTextField(value = profile.name, onValueChange = { profile = profile.copy(name = it) }, label = { Text("Company Name") }, modifier = Modifier.fillMaxWidth())
-                          OutlinedTextField(value = profile.phone, onValueChange = { profile = profile.copy(phone = it) }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
-                          OutlinedTextField(value = profile.address, onValueChange = { profile = profile.copy(address = it) }, label = { Text("Address") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-                          OutlinedTextField(value = profile.footer, onValueChange = { profile = profile.copy(footer = it) }, label = { Text("Footer") }, modifier = Modifier.fillMaxWidth())
-                          Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                              Text(if (profile.logoPath.isBlank()) "Company logo not uploaded" else "Company logo uploaded ✓", Modifier.weight(1f))
-                              OutlinedButton(onClick = pickLogo) { Text("UPLOAD / CHANGE LOGO") }
+                          HorizontalDivider()
+                          Text("Custom", fontWeight = FontWeight.Bold)
+                          OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Product") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              OutlinedTextField(value = qty, onValueChange = { qty = it.filter(Char::isDigit) }, label = { Text("Qty") }, modifier = Modifier.weight(1f), singleLine = true)
+                              OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Price") }, modifier = Modifier.weight(1f), singleLine = true)
                           }
-                          Text("Receipt style", fontWeight = FontWeight.Bold)
-                          Row(Modifier.horizontalScroll(rememberScrollState())) {
-                              ReceiptTheme.values().forEach { t -> FilterChip(selected = theme == t, onClick = { theme = t }, label = { Text(t.name) }) }
-                          }
+                          Button(onClick = { val q = qty.toIntOrNull() ?: 0; val p = price.toDoubleOrNull() ?: 0.0; if (name.isNotBlank() && q > 0 && p > 0) { addCustom(name.trim(), q, p); name = ""; price = ""; qty = "1" } }, modifier = Modifier.fillMaxWidth()) { Text("ADD CUSTOM") }
                       }
                   },
-                  confirmButton = {
-                      TextButton(onClick = { store.saveProfile(profile.copy(saleLogoEnabled = true, kitchenLogoEnabled = true)); store.setTheme(theme); close() }) { Text("SAVE") }
-                  }
+                  confirmButton = { TextButton(onClick = close) { Text("DONE") } }
               )
           }
           '''
-          new='\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())+'\n'
-          s=re.sub(r'@Composable\nfun SettingsPage[\\s\\S]*$', new, s)
+          block='\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())+'\n'
+          s=s[:start]+block+s[end:]
           p.write_text(s)
       - name: Commit fix
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/findupto/voicepos/PosUiComponents.kt
-          git commit -m 'Fix settings form compile'
+          git commit -m 'Fix POS Compose fields'
           git push origin main
