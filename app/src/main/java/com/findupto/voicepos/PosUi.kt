@@ -648,6 +648,15 @@ private fun SettingsPage(store: Store, printer: PrinterManager, close: () -> Uni
                 OutlinedTextField(profile.address, { profile = profile.copy(address = it) }, label = { Text("Address") }, minLines = 3)
                 OutlinedTextField(profile.phone, { profile = profile.copy(phone = it) }, label = { Text("Phone") })
                 OutlinedTextField(profile.footer, { profile = profile.copy(footer = it) }, label = { Text("Slip footer") })
+                Text("Company Logo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Sale receipt logo")
+                    Switch(checked = profile.saleLogoEnabled, onCheckedChange = { profile = profile.copy(saleLogoEnabled = it) })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Kitchen receipt logo")
+                    Switch(checked = profile.kitchenLogoEnabled, onCheckedChange = { profile = profile.copy(kitchenLogoEnabled = it) })
+                }
                 Text("Receipt style", fontWeight = FontWeight.Bold)
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
                     ReceiptTheme.values().forEach { t -> FilterChip(theme == t, { theme = t }, label = { Text(if (t == ReceiptTheme.ADVANCED_PREMIUM) "Advanced Premium" else t.name) }) }
