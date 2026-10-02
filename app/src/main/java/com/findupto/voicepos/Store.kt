@@ -14,11 +14,14 @@ class Store(context: Context) {
         val savedName = p.getString("name", null)
         val savedAddress = p.getString("address", null)
         val savedPhone = p.getString("phone", null)
+        val logoPath = p.getString("logo_path", "") ?: ""
+        val saleLogo = p.getBoolean("sale_logo", false)
+        val kitchenLogo = p.getBoolean("kitchen_logo", false)
         return CompanyProfile(
             savedName ?: "The Slice of Heaven",
             savedAddress ?: "Old Utility Store near Police Line\nKhansar Road Bhakkar Punjab\nPakistan",
             savedPhone ?: "0332 1872929, 0310 3685151",
-            p.getString("footer", "Thank you for your visit") ?: "Thank you for your visit"
+            p.getString("footer", "Thank you for your visit") ?: "Thank you for your visit", logoPath, saleLogo, kitchenLogo
         )
     }
 
@@ -26,7 +29,7 @@ class Store(context: Context) {
         .putString("name", x.name)
         .putString("address", x.address)
         .putString("phone", x.phone)
-        .putString("footer", x.footer)
+        .putString("footer", x.footer).putString("logo_path", x.logoPath).putBoolean("sale_logo", x.saleLogoEnabled).putBoolean("kitchen_logo", x.kitchenLogoEnabled)
         .apply()
 
     fun theme() = runCatching { ReceiptTheme.valueOf(p.getString("theme", "MODERN")!!) }.getOrDefault(ReceiptTheme.MODERN)
