@@ -91,17 +91,7 @@ object VoiceCommandEngine {
                 }
             if (Regex("""\\b(?:add|order)\\s+(?:\\d+\\s+)?(?:x\\s+)?$escaped(?:\\s+each)?\\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
                 out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
-            if (Regex("""^\\d+\\s+$nameEscaped(?:\\s+each)?$""", RegexOption.IGNORE_CASE).matches(s)) {
-                val qty = s.substringBefore(" ").toIntOrNull() ?: 0
-                if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
-            }
-        }
-
-        if (Regex("""\b(?:add|order)\s+$escaped(?:\s+each)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
-                out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
-        }
-
-        if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
+            if (Regex("""\b(send|print|place) (the )?(order|kitchen)\b|\bplace order\b""").containsMatchIn(s)) out += VoiceCommand.CompletePrint
         return out.distinctBy { it.toString() }
     }
 }
