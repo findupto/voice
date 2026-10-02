@@ -626,7 +626,25 @@ private fun SettingsPage(store: Store, printer: PrinterManager, close: () -> Uni
                     ReceiptTheme.values().forEach { t -> FilterChip(theme == t, { theme = t }, label = { Text(t.name) }) }
                 }
                 Text("Bluetooth printers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Button(onClick = { printer.discover() }) { Text(if (printer.discovering) "Discovering…" else "Find Bluetooth printers") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { printer.discoverNow() }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.BluetoothSearching, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (printer.discovering) "Discovering…" else "Find printers")
+                    }
+                    OutlinedButton(onClick = { printer.refresh() }) {
+                        Icon(Icons.Default.Refresh, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Refresh")
+                    }
+                }
+                if (printer.discovering) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("Searching nearby Bluetooth printers… keep this screen open.", style = MaterialTheme.typography.bodySmall)
+                }
+                if (printer.devices.isEmpty()) {
+                    Text("No printers found yet. Make sure the printer is powered on and Bluetooth is enabled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 printer.devices.forEach { device ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(device.name ?: device.address, Modifier.weight(1f), maxLines = 1)
