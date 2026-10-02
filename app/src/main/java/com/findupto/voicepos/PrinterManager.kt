@@ -4,6 +4,7 @@ import android.bluetooth.*
 import android.content.*
 import android.os.Build
 import androidx.compose.runtime.*
+import android.os.Handler
 import java.util.UUID
 
 class PrinterManager(private val context: Context) {
@@ -20,10 +21,19 @@ class PrinterManager(private val context: Context) {
     fun discover(){
         runCatching {
             if (adapter?.isEnabled != true) { discovering = false; return }
-            if (adapter?.isDiscovering == true) adapter.cancelDiscovery()
             refresh()
-            discovering = adapter?.startDiscovery() == true
+            if (adapter?.isDiscovering == true) adapter.cancelDiscovery()
+            Handler(context.mainLooper).postDelayed({
+                runCatching {
+                    discovering = adapter?.startDiscovery() == true
+                }.onFailure { discovering = false }
+            }, 150)
         }.onFailure { discovering = false }
+    }
+
+    fun discoverNow() {
+        refresh()
+        discover()
     }
     fun device(address:String)=devices.firstOrNull{it.address==address}
     private fun connect(old:BluetoothSocket?,d:BluetoothDevice)=runCatching{old?.close();d.createRfcommSocketToServiceRecord(spp).also{it.connect()}}.getOrNull()
