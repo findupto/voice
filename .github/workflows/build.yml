@@ -1,45 +1,61 @@
 name: Build Android APK
-# Build after menu CSV and offline voice fixes
-
+# Build and repair source before packaging
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
-
+      - name: Restore and normalize POS UI source
+        run: |
+          git checkout f136bdf2f095f1a9e5130d9f244d5d3a99856d4b -- app/src/main/java/com/findupto/voicepos/PosUi.kt
+          rm -f app/src/main/java/com/findupto/voicepos/PosUiExtras.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/findupto/voicepos/PosUi.kt')
+          s=p.read_text()
+          s=s.replace('    pickLogo: () -> Unit\n) {','    pickLogo: () -> Unit,\n    scanDocument: () -> Unit,\n    exportBackup: () -> Unit,\n    importBackup: () -> Unit\n) {')
+          s=s.replace('MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu) { item ->','MenuPage(menu, store, tick = tick, refresh = { tick++ }, exportMenu = exportMenu, importMenu = importMenu, scanDocument = scanDocument) { item ->')
+          s=s.replace('if (settings) SettingsPage(store, printer, pickLogo) { settings = false; tick++ }','if (settings) SettingsPage(store, printer, pickLogo, exportBackup, importBackup) { settings = false; tick++ }')
+          s=s.replace('private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, addToCart: (MenuItem) -> Unit) {','private fun MenuPage(menu: List<MenuItem>, store: Store, tick: Int, refresh: () -> Unit, exportMenu: () -> Unit, importMenu: () -> Unit, scanDocument: () -> Unit, addToCart: (MenuItem) -> Unit) {')
+          marker='        Text("Add multiple rows for the same product to create different variants/sizes and prices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)'
+          s=s.replace(marker, '        OutlinedButton(onClick = scanDocument, modifier = Modifier.fillMaxWidth()) {\n            Icon(Icons.Default.DocumentScanner, null)\n            Spacer(Modifier.width(6.dp))\n            Text("AI SCAN IMAGE / PDF → ADD PRODUCTS")\n        }\n'+marker)
+          s=s.replace('private fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, close: () -> Unit) {','private fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, exportBackup: () -> Unit, importBackup: () -> Unit, close: () -> Unit) {')
+          marker2='                Text("Company", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)'
+          backup='''                Text("Business Data Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)\n                Text("Move your menu, sales, pending orders, expenses, cash, company profile, receipt settings and logo to another phone.", style = MaterialTheme.typography.bodySmall)\n                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {\n                    Button(onClick = exportBackup, modifier = Modifier.weight(1f)) { Text("EXPORT BACKUP") }\n                    OutlinedButton(onClick = importBackup, modifier = Modifier.weight(1f)) { Text("IMPORT BACKUP") }\n                }\n'''
+          s=s.replace(marker2, backup+marker2)
+          p.write_text(s)
+          Path('app/src/main/java/com/findupto/voicepos/PosUiExtras.kt').unlink(missing_ok=True)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/findupto/voicepos/PosUi.kt app/src/main/java/com/findupto/voicepos/PosUiExtras.kt
+          git diff --cached --quiet || git commit -m "Fix POS UI integration for Power Voice and business tools [skip ci]"
+          git push origin HEAD:main
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
-
       - name: Verify APK
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
           ls -lh app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk
-
       - name: Prepare downloadable APK
         run: cp app/build/outputs/apk/debug/app-debug.apk VoicePOS-${{ github.run_number }}.apk
-
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
         with:
@@ -47,23 +63,15 @@ jobs:
           path: VoicePOS-${{ github.run_number }}.apk
           if-no-files-found: error
           retention-days: 90
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v2.1.0-build-${{ github.run_number }}
-          name: Voice POS Premium v2.1 build ${{ github.run_number }}
+          tag_name: v2.2.0-build-${{ github.run_number }}
+          name: Voice POS Premium v2.2 build ${{ github.run_number }}
           body: |
-            Automated Android APK build.
-
-            Build: ${{ github.run_number }}
-            Commit: ${{ github.sha }}
-
-            The APK is attached below as a direct downloadable release asset.
+            Power Voice, AI image/PDF menu scanning, and complete business backup/restore.
           files: VoicePOS-${{ github.run_number }}.apk
           make_latest: true
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-# rebuild 1790678536985
