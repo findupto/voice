@@ -46,20 +46,20 @@ class Store(context: Context) {
         }
 
     fun sales(): List<Sale> = p.getString("sales", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-        runCatching { val a = line.split("~"); Sale(a[0].toLong(), decodeItems(a[1]), a[2].toDouble(), a[3].toLong()) }.getOrNull()
+        runCatching { val a = line.split("~"); Sale(a[0].toLong(), decodeItems(a[1]), a[2].toDouble(), a[3].toLong(), a.getOrNull(4)?.replace("%7E","~") ?: "", a.getOrNull(5)?.replace("%7E","~") ?: "") }.getOrNull()
     }
 
     fun addSale(s: Sale) {
-        val raw = (sales() + s).joinToString("\n") { "${it.id}~${encodeItems(it.items)}~${it.total}~${it.time}" }
+        val raw = (sales() + s).joinToString("\n") { "${it.id}~${encodeItems(it.items)}~${it.total}~${it.time}~${it.customerName.replace("~","%7E")}~${it.customerPhone.replace("~","%7E")}" }
         p.edit().putString("sales", raw).apply()
     }
 
     fun pending(): List<PendingSale> = p.getString("pending", "")!!.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-        runCatching { val a = line.split("~"); PendingSale(a[0].toLong(), decodeItems(a[1]), a[2].toLong()) }.getOrNull()
+        runCatching { val a = line.split("~"); PendingSale(a[0].toLong(), decodeItems(a[1]), a[2].toLong(), a.getOrNull(3)?.replace("%7E","~") ?: "", a.getOrNull(4)?.replace("%7E","~") ?: "") }.getOrNull()
     }
 
     private fun savePending(all: List<PendingSale>) {
-        val raw = all.joinToString("\n") { "${it.id}~${encodeItems(it.items)}~${it.time}" }
+        val raw = all.joinToString("\n") { "${it.id}~${encodeItems(it.items)}~${it.time}~${it.customerName.replace("~","%7E")}~${it.customerPhone.replace("~","%7E")}" }
         p.edit().putString("pending", raw).apply()
     }
 
