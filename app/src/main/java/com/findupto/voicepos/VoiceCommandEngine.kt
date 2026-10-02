@@ -76,14 +76,28 @@ object VoiceCommandEngine {
             if (qty > 0 && name.isNotBlank() && price > 0) out += VoiceCommand.Add(SaleItem(name, qty, price))
         }
 
-        menu.sortedByDescending { it.name.length }.forEach { product ->
-            val escaped = Regex.escape(product.name.lowercase(Locale.US))
-            Regex("""(?:^|\b)(\d+)\s+$escaped(?:\s+each)?(?=$|\b|,|;|\band\b|\bthen\b)""", RegexOption.IGNORE_CASE)
+        // Detect products directly from the configured Menu, including natural phrases
+        // such as "2 chicken shawarma", "add chicken shawarma", and variant/size names.
+        menu.sortedByDescending { (it.name + " " + it.variant + " " + it.size).length }.forEach { product ->
+            val label = listOf(product.name, product.variant, product.size)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+            val escaped = Regex.escape(label.lowercase(Locale.US))
+            val nameEscaped = Regex.escape(product.name.lowercase(Locale.US))
+            Regex("""(?:^|\\b)(\\d+)\\s+(?:x\\s+)?$escaped(?:\\s+each)?(?=$|\\b|,|;|\\band\\b|\\bthen\\b)""", RegexOption.IGNORE_CASE)
                 .findAll(s).forEach { m ->
                     val qty = m.groupValues[1].toIntOrNull() ?: 0
                     if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
                 }
-            if (Regex("""\b(?:add|order)\s+$escaped(?:\s+each)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
+            if (Regex("""\\b(?:add|order)\\s+(?:\\d+\\s+)?(?:x\\s+)?$escaped(?:\\s+each)?\\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
+                out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
+            if (Regex("""^\\d+\\s+$nameEscaped(?:\\s+each)?$""", RegexOption.IGNORE_CASE).matches(s)) {
+                val qty = s.substringBefore(" ").toIntOrNull() ?: 0
+                if (qty > 0) out += VoiceCommand.Add(SaleItem(product.name, qty, product.price))
+            }
+        }
+
+        if (Regex("""\b(?:add|order)\s+$escaped(?:\s+each)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(s))
                 out += VoiceCommand.Add(SaleItem(product.name, 1, product.price))
         }
 
