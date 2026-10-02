@@ -40,7 +40,8 @@ fun PosApp(
     listen: () -> Unit,
     openSpeechSettings: () -> Unit,
     exportMenu: () -> Unit,
-    importMenu: () -> Unit
+    importMenu: () -> Unit,
+    pickLogo: () -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var cart by remember { mutableStateOf(emptyList<SaleItem>()) }
@@ -192,7 +193,7 @@ fun PosApp(
         tick++
         expense = false
     }
-    if (settings) SettingsPage(store, printer) { settings = false; tick++ }
+    if (settings) SettingsPage(store, printer, pickLogo) { settings = false; tick++ }
     if (customerDialog) CustomerDetailsDialog({ name, phone -> sendOrderWithCustomer(name, phone); customerDialog = false }, { customerDialog = false })
     editing?.let { order -> EditDialog(order, { updated -> store.replacePending(updated); editing = null; tick++ }, { editing = null }) }
     selectedSale?.let { sale -> SaleDetailDialog(sale, profile, printer, store.theme()) { selectedSale = null } }
@@ -632,7 +633,7 @@ private fun ExpenseDialog(done: (String, String, Double) -> Unit) {
 }
 
 @Composable
-private fun SettingsPage(store: Store, printer: PrinterManager, close: () -> Unit) {
+private fun SettingsPage(store: Store, printer: PrinterManager, pickLogo: () -> Unit, close: () -> Unit) {
     var profile by remember { mutableStateOf(store.profile()) }
     var theme by remember { mutableStateOf(store.theme()) }
     var customer by remember { mutableStateOf(store.customerPrinterAddress()) }
@@ -649,6 +650,10 @@ private fun SettingsPage(store: Store, printer: PrinterManager, close: () -> Uni
                 OutlinedTextField(profile.phone, { profile = profile.copy(phone = it) }, label = { Text("Phone") })
                 OutlinedTextField(profile.footer, { profile = profile.copy(footer = it) }, label = { Text("Slip footer") })
                 Text("Company Logo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (profile.logoPath.isBlank()) "No logo uploaded" else "Logo uploaded ✓", Modifier.weight(1f))
+                    OutlinedButton(onClick = pickLogo) { Text(if (profile.logoPath.isBlank()) "UPLOAD LOGO" else "CHANGE LOGO") }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Sale receipt logo")
                     Switch(checked = profile.saleLogoEnabled, onCheckedChange = { profile = profile.copy(saleLogoEnabled = it) })
