@@ -9,6 +9,8 @@ import android.net.Uri
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import java.io.File
+import java.io.FileOutputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,6 +32,7 @@ class MainActivity : ComponentActivity() {
 
     private val exportMenuLauncher = registerForActivityResult(CreateDocument("text/csv")) { uri -> uri?.let { writeMenuCsv(it) } }
     private val importMenuLauncher = registerForActivityResult(OpenDocument()) { uri -> uri?.let { readMenuCsv(it) } }
+    private val logoLauncher = registerForActivityResult(OpenDocument()) { uri -> uri?.let { saveLogo(it) } }
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         voiceStatus.value = if (canUseVoice()) "Voice ready" else "Voice service unavailable"
@@ -59,7 +62,8 @@ class MainActivity : ComponentActivity() {
                     listen = ::listen,
                     openSpeechSettings = ::openSpeechSettings,
                     exportMenu = { exportMenuLauncher.launch("voice-pos-menu.csv") },
-                    importMenu = { importMenuLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain")) }
+                    importMenu = { importMenuLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain")) },
+                    pickLogo = { logoLauncher.launch(arrayOf("image/*")) }
                 )
             }
         }
@@ -165,6 +169,18 @@ class MainActivity : ComponentActivity() {
         runCatching { startActivity(intent) }.onFailure {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
+    }
+
+    private fun saveLogo(uri: Uri) {
+        runCatching {
+            val dir = File(filesDir, "branding").apply { mkdirs() }
+            val file = File(dir, "company_logo.png")
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(file).use { output -> input.copyTo(output) }
+            }
+            store.saveProfile(store.profile().copy(logoPath = file.absolutePath))
+            voiceStatus.value = "Company logo uploaded"
+        }.onFailure { voiceStatus.value = "Could not upload company logo" }
     }
 
     private fun writeMenuCsv(uri: Uri) {
