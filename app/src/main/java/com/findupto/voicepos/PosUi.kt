@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import java.text.SimpleDateFormat
+import java.util.*
 @Composable fun VoicePosTheme(content:@Composable ()->Unit){MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFF9B8CFF),secondary=Color(0xFF42D6A4)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun PosApp(store:Store,printer:PrinterManager,heard:String,voiceStatus:String,clearHeard:()->Unit,listen:()->Unit,openSpeechSettings:()->Unit,exportMenu:()->Unit,importMenu:()->Unit,pickLogo:()->Unit,scanDocument:()->Unit,exportBackup:()->Unit,importBackup:()->Unit){
