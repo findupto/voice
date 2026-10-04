@@ -39,92 +39,16 @@ class MainActivity : ComponentActivity() {
     private val importMenuLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{readMenuCsv(it)}}
     private val logoLauncher=registerForActivityResult(ActivityResultContracts.GetContent()){uri->uri?.let{saveLogo(it)}}
     private val scanLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{scanMenuDocument(it)}}
-    private val backupExportLauncher=registerForActivityResult(CreateDocument("application/json")){uri->uri?.let{contentResolver.openOutputStream(it)?.bufferedWriter()?.use{w->w.write(store.exportBackup())};scanStatus.value="Full business backup exported"}}
-    private val backupImportLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{runCatching{val raw=contentResolver.openInputStream(it)?.bufferedReader()?.use{r->r.readText()}?:"";store.importBackup(raw);scanStatus.value="Business data restored successfully — restart the app"}.onFailure{scanStatus.value="Backup import failed: ${it.message}"}}}
+    private val backupExportLauncher=registerForActivityResult(CreateDocument("application/json")){uri->uri?.let{contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{w->w.write(store.exportBackup())};scanStatus.value="Full business backup exported"}}
+    private val backupImportLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{runCatching{val raw=contentResolver.openInputStream(uri)?.bufferedReader()?.use{r->r.readText()}?:"";store.importBackup(raw);scanStatus.value="Business data restored successfully — restart the app"}.onFailure{scanStatus.value="Backup import failed: ${it.message}"}}}
     private val permissions=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){voiceStatus.value=if(canUseVoice())"Power Voice ready" else "Voice service unavailable"}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);StoreMigration.migrate(this);store=Store(this);printer=PrinterManager(this,store);val ps=mutableListOf(Manifest.permission.RECORD_AUDIO);if(Build.VERSION.SDK_INT<31)ps+=Manifest.permission.ACCESS_FINE_LOCATION else{ps+=Manifest.permission.BLUETOOTH_SCAN;ps+=Manifest.permission.BLUETOOTH_CONNECT};permissions.launch(ps.toTypedArray());setContent{VoicePosTheme{PosApp(store,printer,heard.value,voiceStatus.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch("image/*")},{scanLauncher.launch(arrayOf("image/*","application/pdf"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))})}}}
     private fun canUseVoice()=SpeechRecognizer.isRecognitionAvailable(this)
-    private fun chooseRawVoiceResults(r:Bundle?):String{
-        val candidates=r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty().map{it.trim()}.filter{it.isNotBlank()}
-        if(candidates.isEmpty())return ""
-        val menu=store.menu()
-        return candidates.maxWithOrNull(compareBy<String>{VoiceCommandEngine.parse(it,menu).size}.thenBy{it.length})?:candidates.first()
-    }
-    private fun improveVoice(raw:String){
-        if(raw.isBlank()){heard.value="";return}
-        val direct=VoiceCommandEngine.parse(raw,store.menu())
-        // Never send a command that already parses correctly through a second model.
-        // The deterministic menu-aware parser is safer for quantities/prices than a generative rewrite.
-        if(direct.isNotEmpty()){
-            heard.value=raw
-            voiceStatus.value="Command understood ✓"
-            return
-        }
-        voiceStatus.value="Understanding…"
-        Thread{
-            val ai=AiEngine.rewriteVoiceBlocking(raw,store.menu())
-            val normalized=ai?.takeIf{it.isNotBlank()}
-            val parsed=normalized?.let{VoiceCommandEngine.parse(it,store.menu())}.orEmpty()
-            runOnUiThread{
-                if(parsed.isNotEmpty()){
-                    heard.value=normalized!!
-                    voiceStatus.value="AI command understood ✓"
-                }else{
-                    heard.value=""
-                    voiceStatus.value="I could not safely match that command — please repeat with the product name"
-                }
-            }
-        }.start()
-    }
-    private fun voiceIntent():Intent=Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE,"en-US")
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,"en-US")
-        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,10)
-        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,900)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,4200)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,2200)
-        if(Build.VERSION.SDK_INT>=23)putExtra("android.speech.extra.BIASING_STRINGS",store.menu().take(80).flatMap{listOf(it.name,it.variant,it.size)}.filter{it.isNotBlank()})
-    }
-    private fun listen(){
-        if(!canUseVoice()){voiceStatus.value="Android voice service unavailable";openSpeechSettings();return}
-        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO));return}
-        recognizer?.destroy();listening=false
-        val useDevice=Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-        recognitionMode=if(useDevice)1 else 0
-        recognizer=(if(useDevice)SpeechRecognizer.createOnDeviceSpeechRecognizer(this) else SpeechRecognizer.createSpeechRecognizer(this)).apply{
-            setRecognitionListener(object:RecognitionListener{
-                override fun onReadyForSpeech(p:Bundle?){listening=true;voiceStatus.value=if(recognitionMode==1)"Power Voice • Listening…" else "Voice • Listening…"}
-                override fun onBeginningOfSpeech(){listening=true}
-                override fun onRmsChanged(v:Float){}
-                override fun onBufferReceived(b:ByteArray?){ }
-                override fun onEndOfSpeech(){listening=false;voiceStatus.value="Understanding…"}
-                override fun onError(e:Int){listening=false;if(recognitionMode==1&&e!=SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS){voiceStatus.value="On-device voice unavailable — retrying online…";voiceHandler.postDelayed({startOnlineVoice()},300)}else voiceStatus.value="Voice error — try again"}
-                override fun onResults(r:Bundle?){improveVoice(chooseRawVoiceResults(r))}
-                override fun onPartialResults(r:Bundle?){ }
-                override fun onEvent(t:Int,p:Bundle?){ }
-            })
-        }
-        recognizer?.startListening(voiceIntent())
-    }
-    private fun startOnlineVoice(){
-        recognizer?.destroy();recognitionMode=0
-        recognizer=SpeechRecognizer.createSpeechRecognizer(this).apply{
-            setRecognitionListener(object:RecognitionListener{
-                override fun onReadyForSpeech(p:Bundle?){voiceStatus.value="Voice • Listening…"}
-                override fun onBeginningOfSpeech(){}
-                override fun onRmsChanged(v:Float){}
-                override fun onBufferReceived(b:ByteArray?){ }
-                override fun onEndOfSpeech(){voiceStatus.value="Understanding…"}
-                override fun onError(e:Int){voiceStatus.value="Voice failed — try again"}
-                override fun onResults(r:Bundle?){improveVoice(chooseRawVoiceResults(r))}
-                override fun onPartialResults(r:Bundle?){ }
-                override fun onEvent(t:Int,p:Bundle?){ }
-            })
-        }
-        recognizer?.startListening(voiceIntent())
-    }
+    private fun chooseRawVoiceResults(r:Bundle?):String{val candidates=r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty().map{it.trim()}.filter{it.isNotBlank()};if(candidates.isEmpty())return "";val menu=store.menu();return candidates.maxWithOrNull(compareBy<String>{VoiceCommandEngine.parse(it,menu).size}.thenBy{it.length})?:candidates.first()}
+    private fun improveVoice(raw:String){if(raw.isBlank()){heard.value="";return};val direct=VoiceCommandEngine.parse(raw,store.menu());if(direct.isNotEmpty()){heard.value=raw;voiceStatus.value="Command understood ✓";return};voiceStatus.value="Understanding…";Thread{val ai=AiEngine.rewriteVoiceBlocking(raw,store.menu());val normalized=ai?.takeIf{it.isNotBlank()};val parsed=normalized?.let{VoiceCommandEngine.parse(it,store.menu())}.orEmpty();runOnUiThread{if(parsed.isNotEmpty()){heard.value=normalized!!;voiceStatus.value="AI command understood ✓"}else{heard.value="";voiceStatus.value="I could not safely match that command — please repeat with the product name"}}}.start()}
+    private fun voiceIntent():Intent=Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);putExtra(RecognizerIntent.EXTRA_LANGUAGE,"en-US");putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,"en-US");putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,10);putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true);putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,900);putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,4200);putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,2200);if(Build.VERSION.SDK_INT>=23)putExtra("android.speech.extra.BIASING_STRINGS",store.menu().take(80).flatMap{listOf(it.name,it.variant,it.size)}.filter{it.isNotBlank()}.toCollection(java.util.ArrayList()))}
+    private fun listen(){if(!canUseVoice()){voiceStatus.value="Android voice service unavailable";openSpeechSettings();return};if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO));return};recognizer?.destroy();listening=false;val useDevice=Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(this);recognitionMode=if(useDevice)1 else 0;recognizer=(if(useDevice)SpeechRecognizer.createOnDeviceSpeechRecognizer(this) else SpeechRecognizer.createSpeechRecognizer(this)).apply{setRecognitionListener(object:RecognitionListener{override fun onReadyForSpeech(p:Bundle?){listening=true;voiceStatus.value=if(recognitionMode==1)"Power Voice • Listening…" else "Voice • Listening…"};override fun onBeginningOfSpeech(){listening=true};override fun onRmsChanged(v:Float){};override fun onBufferReceived(b:ByteArray?){ };override fun onEndOfSpeech(){listening=false;voiceStatus.value="Understanding…"};override fun onError(e:Int){listening=false;if(recognitionMode==1&&e!=SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS){voiceStatus.value="On-device voice unavailable — retrying online…";voiceHandler.postDelayed({startOnlineVoice()},300)}else voiceStatus.value="Voice error — try again"};override fun onResults(r:Bundle?){improveVoice(chooseRawVoiceResults(r))};override fun onPartialResults(r:Bundle?){ };override fun onEvent(t:Int,p:Bundle?){ }})};recognizer?.startListening(voiceIntent())}
+    private fun startOnlineVoice(){recognizer?.destroy();recognitionMode=0;recognizer=SpeechRecognizer.createSpeechRecognizer(this).apply{setRecognitionListener(object:RecognitionListener{override fun onReadyForSpeech(p:Bundle?){voiceStatus.value="Voice • Listening…"};override fun onBeginningOfSpeech(){};override fun onRmsChanged(v:Float){};override fun onBufferReceived(b:ByteArray?){ };override fun onEndOfSpeech(){voiceStatus.value="Understanding…"};override fun onError(e:Int){voiceStatus.value="Voice failed — try again"};override fun onResults(r:Bundle?){improveVoice(chooseRawVoiceResults(r))};override fun onPartialResults(r:Bundle?){ };override fun onEvent(t:Int,p:Bundle?){ }})};recognizer?.startListening(voiceIntent())}
     private fun openSpeechSettings(){runCatching{startActivity(Intent("com.android.settings.SPEECH_RECOGNITION_SETTINGS"))}.onFailure{startActivity(Intent(Settings.ACTION_SETTINGS))}}
     private fun saveLogo(uri:Uri){runCatching{val f=File(filesDir,"branding/company_logo.png");f.parentFile?.mkdirs();contentResolver.openInputStream(uri)?.use{input->FileOutputStream(f).use{output->input.copyTo(output)}}?:error("empty image");require(f.length()>0){"empty image"};store.saveProfile(store.profile().copy(logoPath=f.absolutePath,saleLogoEnabled=true,kitchenLogoEnabled=true));scanStatus.value="Company logo uploaded successfully"}.onFailure{scanStatus.value="Could not upload logo: ${it.message}"}}
     private fun writeMenuCsv(uri:Uri){val csv=buildString{appendLine("name,variant,size,price");store.menu().forEach{appendLine(listOf(it.name,it.variant,it.size,it.price).joinToString(","){"\"${it.toString().replace("\"","\"\"")}\""})}};contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{it.write(csv)}}
