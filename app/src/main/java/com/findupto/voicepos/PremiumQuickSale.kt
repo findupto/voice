@@ -9,14 +9,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun PremiumQuickSale(
     cart: List<SaleItem>, voiceStatus: String, send: () -> Unit, listen: () -> Unit,
     openSpeechSettings: () -> Unit, clear: () -> Unit, manual: () -> Unit, discount: () -> Unit,
-    changeQty: (SaleItem, Int) -> Unit
+    changeQty: (SaleItem, Int) -> Unit, hold: () -> Unit
 ) {
     val products = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
     val discountAmount = cartDiscount(cart)
@@ -42,7 +42,7 @@ fun PremiumQuickSale(
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Current Order", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Row { if (cart.isNotEmpty()) TextButton(onClick = discount) { Text(if (discountAmount > 0) "CHANGE DISCOUNT" else "DISCOUNT") }; if (cart.isNotEmpty()) TextButton(onClick = clear) { Text("Clear") } }
+                    Row { if (cart.isNotEmpty()) TextButton(onClick = discount) { Text(if (discountAmount > 0) "CHANGE DISCOUNT" else "DISCOUNT") }; if (cart.isNotEmpty()) TextButton(onClick = hold) { Text("HOLD") }; if (cart.isNotEmpty()) TextButton(onClick = clear) { Text("Clear") } }
                 }
                 if (cart.isEmpty()) EmptyState(Icons.Default.ShoppingCart, "No items", "Use ADD PRODUCTS or voice")
                 products.forEach { item ->
