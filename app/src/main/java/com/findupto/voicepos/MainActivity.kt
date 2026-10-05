@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     private val heard=mutableStateOf("")
     private val voiceStatus=mutableStateOf("Power Voice ready")
     private val scanStatus=mutableStateOf("")
+    private val logoVersion=mutableStateOf(0)
     private var recognizer:SpeechRecognizer?=null
     private var listening=false
     private var voiceAttempt=0
@@ -52,7 +53,7 @@ class MainActivity : ComponentActivity() {
         val ps=mutableListOf(Manifest.permission.RECORD_AUDIO)
         if(Build.VERSION.SDK_INT<31)ps+=Manifest.permission.ACCESS_FINE_LOCATION else{ps+=Manifest.permission.BLUETOOTH_SCAN;ps+=Manifest.permission.BLUETOOTH_CONNECT}
         permissions.launch(ps.toTypedArray())
-        setContent{VoicePosTheme{PosApp(store,printer,heard.value,voiceStatus.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch(arrayOf("image/png","image/jpeg","image/webp"))},{scanLauncher.launch(arrayOf("image/*","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/csv","text/plain"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))})}}}
+        setContent{VoicePosTheme{PosApp(store,printer,heard.value,voiceStatus.value,logoVersion.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch(arrayOf("image/png","image/jpeg","image/webp"))},{scanLauncher.launch(arrayOf("image/*","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/csv","text/plain"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))})}}}
     }
 
     private fun canUseVoice()=SpeechRecognizer.isRecognitionAvailable(this)
@@ -65,19 +66,18 @@ class MainActivity : ComponentActivity() {
     private fun openSpeechSettings(){runCatching{startActivity(Intent("com.android.settings.SPEECH_RECOGNITION_SETTINGS"))}.onFailure{startActivity(Intent(Settings.ACTION_SETTINGS))}}
 
     private fun saveLogo(uri:Uri){runCatching{
-        contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching{contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
         val source=contentResolver.openInputStream(uri)?.use{BitmapFactory.decodeStream(it)}?:error("image could not be decoded")
         require(source.width>0&&source.height>0){"invalid image"}
         val max=900;val scale=minOf(1f,max.toFloat()/source.width,max.toFloat()/source.height)
         val scaled=if(scale<1f)Bitmap.createScaledBitmap(source,(source.width*scale).toInt().coerceAtLeast(1),(source.height*scale).toInt().coerceAtLeast(1),true)else source
         val f=File(filesDir,"branding/company_logo.png");f.parentFile?.mkdirs();FileOutputStream(f).use{out->require(scaled.compress(Bitmap.CompressFormat.PNG,100,out)){"PNG encoding failed"}}
         require(f.exists()&&f.length()>0){"logo file was not saved"}
-        store.saveProfile(store.profile().copy(logoPath=f.absolutePath,saleLogoEnabled=true,kitchenLogoEnabled=false));scanStatus.value="Company logo uploaded ✓ (${f.length()/1024} KB)";voiceStatus.value="Logo saved successfully ✓"
+        store.saveProfile(store.profile().copy(logoPath=f.absolutePath,saleLogoEnabled=true,kitchenLogoEnabled=false));logoVersion.value++;scanStatus.value="Company logo uploaded ✓ (${f.length()/1024} KB)";voiceStatus.value="Logo saved successfully ✓"
     }.onFailure{scanStatus.value="Could not upload logo: ${it.message}";voiceStatus.value="Logo upload failed — ${it.message}"}}
 
     private fun writeMenuCsv(uri:Uri){val csv=buildString{appendLine("name,variant,size,price");store.menu().forEach{appendLine(listOf(it.name,it.variant,it.size,it.price).joinToString(","){"\"${it.toString().replace("\"","\"\"")}\""})}};contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{it.write(csv)}}
     private fun readMenuCsv(uri:Uri){val text=contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()}?:return;val imported=text.lines().drop(1).mapNotNull{val p=parseCsvLine(it);if(p.size>=4)p[0].takeIf{n->n.isNotBlank()}?.let{n->p[3].toDoubleOrNull()?.let{pr->MenuItem(System.currentTimeMillis(),n,pr,p[1],p[2])}}else null};if(imported.isNotEmpty()){store.saveMenu((store.menu()+imported).distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price});scanStatus.value="${imported.size} menu products imported"}}
-
     private fun readDocxText(uri:Uri):String=buildString{contentResolver.openInputStream(uri)?.use{input->ZipInputStream(input).use{zip->while(true){val e=zip.nextEntry?:break;if(e.name=="word/document.xml"){val raw=zip.readBytes().toString(Charsets.UTF_8);append(raw.replace(Regex("<w:tab[^>]*/>")," ").replace(Regex("</w:p>"),"\n").replace(Regex("<[^>]+>")," ").replace(Regex("\\s+")," ").trim())}}}}}
     private fun scanMenuDocument(uri:Uri){scanStatus.value="Reading menu… detecting product / variant / size / price rows";val mime=contentResolver.getType(uri).orEmpty().lowercase(Locale.US);if(mime.contains("wordprocessingml")||uri.toString().lowercase().contains(".docx")){runCatching{val text=readDocxText(uri);val clean=MenuScanParser.parse(text);if(clean.isNotEmpty()){store.saveMenu((store.menu()+clean).distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price});scanStatus.value="DOCX: ${clean.size} structured menu variants imported ✓"}else scanStatus.value="DOCX opened, but no confident product + price rows were found"}.onFailure{scanStatus.value="DOCX read failed: ${it.message}"};return}
         val images=mutableListOf<Bitmap>();runCatching{if(mime=="application/pdf"||uri.toString().lowercase().endsWith(".pdf")){contentResolver.openFileDescriptor(uri,"r")!!.use{fd->PdfRenderer(fd).use{r->for(i in 0 until r.pageCount.coerceAtMost(50)){r.openPage(i).use{page->val scale=3;val b=Bitmap.createBitmap(page.width*scale,page.height*scale,Bitmap.Config.ARGB_8888);b.eraseColor(Color.WHITE);page.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);images+=b}}}}}else{contentResolver.openInputStream(uri)?.use{val b=BitmapFactory.decodeStream(it);if(b!=null)images+=b}}}.onFailure{scanStatus.value="Could not open menu: ${it.message}";return}
