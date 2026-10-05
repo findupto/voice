@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
         val ps=mutableListOf(Manifest.permission.RECORD_AUDIO)
         if(Build.VERSION.SDK_INT<31)ps+=Manifest.permission.ACCESS_FINE_LOCATION else{ps+=Manifest.permission.BLUETOOTH_SCAN;ps+=Manifest.permission.BLUETOOTH_CONNECT}
         permissions.launch(ps.toTypedArray())
-        setContent{VoicePosTheme{PosApp(store,printer,heard.value,voiceStatus.value,logoVersion.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch(arrayOf("image/png","image/jpeg","image/webp"))},{scanLauncher.launch(arrayOf("image/*","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/csv","text/plain"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))})}}}
+        setContent{VoicePosTheme{PosApp(store,printer,heard.value,voiceStatus.value,logoVersion.value,{heard.value=""},::listen,::openSpeechSettings,{exportMenuLauncher.launch("voice-pos-menu.csv")},{importMenuLauncher.launch(arrayOf("text/csv","text/comma-separated-values","text/plain"))},{logoLauncher.launch(arrayOf("image/png","image/jpeg","image/webp"))},{scanLauncher.launch(arrayOf("image/*","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/csv","text/plain"))},{backupExportLauncher.launch("voice-pos-business-backup.json")},{backupImportLauncher.launch(arrayOf("application/json","text/json"))})}}
     }
 
     private fun canUseVoice()=SpeechRecognizer.isRecognitionAvailable(this)
