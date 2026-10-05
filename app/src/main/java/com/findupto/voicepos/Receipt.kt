@@ -24,7 +24,7 @@ private fun logo(path:String):ByteArray?{
     val bmp=if(scale<1f)Bitmap.createScaledBitmap(src,(src.width*scale).toInt().coerceAtLeast(8),(src.height*scale).toInt().coerceAtLeast(8),true)else src
     val wb=(bmp.width+7)/8;val out=ByteArrayOutputStream()
     out.write(byteArrayOf(0x1D,0x76,0x30,0,wb.toByte(),(wb shr 8).toByte(),bmp.height.toByte(),(bmp.height shr 8).toByte()))
-    for(y in 0 until bmp.height)for(q in 0 until wb){var v=0;for(bit in 0..7){val x=q*8+bit;if(x<bmp.width){val c=bmp.getPixel(x,y);val alpha=Color.alpha(c);val g=(Color.red(c)*299+Color.green(c)*587+Color.blue(c)*114)/1000;if(alpha>=100&&g<190)v=v or(1 shl (7-bit))}};out.write(v)}}
+    for(y in 0 until bmp.height)for(q in 0 until wb){var v=0;for(bit in 0..7){val x=q*8+bit;if(x<bmp.width){val c=bmp.getPixel(x,y);val alpha=Color.alpha(c);val g=(Color.red(c)*299+Color.green(c)*587+Color.blue(c)*114)/1000;if(alpha>=100&&g<190)v=v or(1 shl (7-bit))}}};out.write(v)}
     return out.toByteArray()
 }
 
