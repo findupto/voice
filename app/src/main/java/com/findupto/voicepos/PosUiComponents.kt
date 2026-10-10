@@ -40,9 +40,11 @@ private fun kitchenShareText(order: PendingSale, profile: CompanyProfile): Strin
     }
 }
 private fun customerQuoteText(order: PendingSale, profile: CompanyProfile): String = buildString {
-    val subtotal = order.total
-    val service = if (profile.serviceChargeEnabled) subtotal * profile.serviceChargeRate / 100.0 else 0.0
-    val tax = if (profile.taxEnabled) (subtotal + service) * profile.taxRate / 100.0 else 0.0
+    val subtotal = order.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }
+    val discount = cartDiscount(order.items).coerceAtMost(subtotal)
+    val net = (subtotal - discount).coerceAtLeast(0.0)
+    val service = if (profile.serviceChargeEnabled) net * profile.serviceChargeRate / 100.0 else 0.0
+    val tax = if (profile.taxEnabled) (net + service) * profile.taxRate / 100.0 else 0.0
     append(profile.name).append("\n")
     if (profile.phone.isNotBlank()) append(profile.phone).append("\n")
     if (profile.address.isNotBlank()) append(profile.address).append("\n")
@@ -53,22 +55,20 @@ private fun customerQuoteText(order: PendingSale, profile: CompanyProfile): Stri
     if(order.customerPhone.isNotBlank()) append("Phone: ").append(order.customerPhone).append("\n")
     if(order.customerAddress.isNotBlank()) append("Delivery address: ").append(order.customerAddress).append("\n")
     append("------------------------------\n")
-    order.items.forEach {
-        if (it.name.startsWith(CART_DISCOUNT_PREFIX)) {
-            append("Discount: -").append(money(kotlin.math.abs(it.total))).append("\n")
-        } else {
-            append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\n")
-        }
+    order.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach {
+        append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\n")
     }
     append("------------------------------\n")
     append("Subtotal: ").append(money(subtotal)).append("\n")
+    if (discount > 0.005) append("Discount: -").append(money(discount)).append("\n")
     if (profile.serviceChargeEnabled) append(profile.serviceChargeLabel).append(": ").append(money(service)).append("\n")
     if (profile.taxEnabled) append(profile.taxLabel).append(": ").append(money(tax)).append("\n")
-    append("ESTIMATED TOTAL: ").append(money(subtotal + service + tax)).append("\n")
+    append("ESTIMATED TOTAL: ").append(money(net + service + tax)).append("\n")
     append(profile.footer)
 }
 private fun customerShareText(sale: Sale, profile: CompanyProfile): String = buildString {
-    val subtotal = sale.items.sumOf { it.total }
+    val subtotal = sale.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }
+    val discount = cartDiscount(sale.items).coerceAtMost(subtotal)
     append(profile.name).append("\n")
     if (profile.phone.isNotBlank()) append(profile.phone).append("\n")
     if (profile.address.isNotBlank()) append(profile.address).append("\n")
@@ -77,15 +77,12 @@ private fun customerShareText(sale: Sale, profile: CompanyProfile): String = bui
     if(sale.customerName.isNotBlank()) append("Customer: ").append(sale.customerName).append("\n")
     if(sale.customerPhone.isNotBlank()) append("Phone: ").append(sale.customerPhone).append("\n")
     append("------------------------------\n")
-    sale.items.forEach {
-        if (it.name.startsWith(CART_DISCOUNT_PREFIX)) {
-            append("Discount: -").append(money(kotlin.math.abs(it.total))).append("\n")
-        } else {
-            append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\n")
-        }
+    sale.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach {
+        append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\n")
     }
     append("------------------------------\n")
     append("Subtotal: ").append(money(subtotal)).append("\n")
+    if (discount > 0.005) append("Discount: -").append(money(discount)).append("\n")
     if (sale.serviceCharge > 0.005) append(profile.serviceChargeLabel).append(": ").append(money(sale.serviceCharge)).append("\n")
     if (sale.tax > 0.005) append(profile.taxLabel).append(": ").append(money(sale.tax)).append("\n")
     append("TOTAL: ").append(money(sale.total)).append("\n")
