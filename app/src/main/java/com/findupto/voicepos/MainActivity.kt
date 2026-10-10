@@ -113,5 +113,13 @@ class MainActivity : ComponentActivity() {
         val images=mutableListOf<Bitmap>();runCatching{if(mime=="application/pdf"||uri.toString().lowercase().endsWith(".pdf")){contentResolver.openFileDescriptor(uri,"r")!!.use{fd->PdfRenderer(fd).use{r->for(i in 0 until r.pageCount.coerceAtMost(50)){r.openPage(i).use{page->val scale=3;val b=Bitmap.createBitmap(page.width*scale,page.height*scale,Bitmap.Config.ARGB_8888);b.eraseColor(Color.WHITE);page.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);images+=b}}}}}else{contentResolver.openInputStream(uri)?.use{val b=BitmapFactory.decodeStream(it);if(b!=null)images+=b}}}.onFailure{scanStatus.value="Could not open menu: ${it.message}";return}
         if(images.isEmpty()){scanStatus.value="No readable pages found";return}
         val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);val barcode=BarcodeScanning.getClient();var remaining=images.size;val found=mutableListOf<MenuItem>();fun finish(){remaining--;if(remaining>0)return;recognizer.close();barcode.close();val clean=found.distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price};if(clean.isNotEmpty()){store.saveMenu((store.menu()+clean).distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price});scanStatus.value="Scanner imported ${clean.size} structured menu variants ✓"}else scanStatus.value="No confident product + price rows found — try a clearer image or PDF"};images.forEach{bmp->val img=InputImage.fromBitmap(bmp,0);recognizer.process(img).addOnSuccessListener{result->found+=MenuScanParser.parse(result.text)}.addOnCompleteListener{barcode.process(img).addOnCompleteListener{finish()}}}}
+    override fun onDestroy() {
+        voiceHandler.removeCallbacksAndMessages(null)
+        recognizer?.destroy()
+        recognizer = null
+        if (::printer.isInitialized) printer.close()
+        super.onDestroy()
+    }
+
     private fun parseCsvLine(s:String):List<String>{val out=mutableListOf<String>();var cur="";var q=false;for(c in s){if(c=='\"')q=!q else if(c==','&&!q){out+=cur;cur=""}else cur+=c};out+=cur;return out.map{it.trim().removeSurrounding("\"").replace("\"\"","\"")}}
 }
