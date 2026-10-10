@@ -28,29 +28,70 @@ private fun shareText(context: android.content.Context, title: String, body: Str
     context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 private fun kitchenShareText(order: PendingSale, profile: CompanyProfile): String = buildString {
-    append(profile.name).append("\\nKITCHEN ORDER #").append(order.id).append("\\n")
-    append("Type: ").append(order.orderType.replace('_',' ')).append("\\n")
-    append("Time: ").append(date(order.time)).append("\\n")
-    if(order.customerName.isNotBlank()) append("Customer: ").append(order.customerName).append("\\n")
-    if(order.customerPhone.isNotBlank()) append("Phone: ").append(order.customerPhone).append("\\n")
-    if(order.customerAddress.isNotBlank()) append("Address: ").append(order.customerAddress).append("\\n")
-    append("------------------------------\\n")
+    append(profile.name).append("\nKITCHEN ORDER #").append(order.id).append("\n")
+    append("Type: ").append(order.orderType.replace('_',' ')).append("\n")
+    append("Time: ").append(date(order.time)).append("\n")
+    if(order.customerName.isNotBlank()) append("Customer: ").append(order.customerName).append("\n")
+    if(order.customerPhone.isNotBlank()) append("Phone: ").append(order.customerPhone).append("\n")
+    if(order.customerAddress.isNotBlank()) append("Address: ").append(order.customerAddress).append("\n")
+    append("------------------------------\n")
     order.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach {
-        append(it.qty).append(" x ").append(it.name).append("\\n")
+        append(it.qty).append(" x ").append(it.name).append("\n")
     }
 }
-private fun customerShareText(sale: Sale, profile: CompanyProfile): String = buildString {
-    append(profile.name).append("\\n")
-    append(if(sale.paymentMethod.isBlank()) "ORDER QUOTATION" else "RECEIPT #${sale.id}").append("\\n")
-    append("Date: ").append(date(sale.time)).append("\\n")
-    if(sale.customerName.isNotBlank()) append("Customer: ").append(sale.customerName).append("\\n")
-    if(sale.customerPhone.isNotBlank()) append("Phone: ").append(sale.customerPhone).append("\\n")
-    append("------------------------------\\n")
-    sale.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach {
-        append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\\n")
+private fun customerQuoteText(order: PendingSale, profile: CompanyProfile): String = buildString {
+    val subtotal = order.total
+    val service = if (profile.serviceChargeEnabled) subtotal * profile.serviceChargeRate / 100.0 else 0.0
+    val tax = if (profile.taxEnabled) (subtotal + service) * profile.taxRate / 100.0 else 0.0
+    append(profile.name).append("\n")
+    if (profile.phone.isNotBlank()) append(profile.phone).append("\n")
+    if (profile.address.isNotBlank()) append(profile.address).append("\n")
+    append("ORDER QUOTATION #").append(order.id).append("\n")
+    append("Date: ").append(date(order.time)).append("\n")
+    append("Type: ").append(order.orderType.replace('_',' ')).append("\n")
+    if(order.customerName.isNotBlank()) append("Customer: ").append(order.customerName).append("\n")
+    if(order.customerPhone.isNotBlank()) append("Phone: ").append(order.customerPhone).append("\n")
+    if(order.customerAddress.isNotBlank()) append("Delivery address: ").append(order.customerAddress).append("\n")
+    append("------------------------------\n")
+    order.items.forEach {
+        if (it.name.startsWith(CART_DISCOUNT_PREFIX)) {
+            append("Discount: -").append(money(kotlin.math.abs(it.total))).append("\n")
+        } else {
+            append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\n")
+        }
     }
-    append("------------------------------\\nTOTAL: ").append(money(sale.total)).append("\\n")
-    if(sale.dueAmount > 0.005) append("Balance due: ").append(money(sale.dueAmount)).append("\\n")
+    append("------------------------------\n")
+    append("Subtotal: ").append(money(subtotal)).append("\n")
+    if (profile.serviceChargeEnabled) append(profile.serviceChargeLabel).append(": ").append(money(service)).append("\n")
+    if (profile.taxEnabled) append(profile.taxLabel).append(": ").append(money(tax)).append("\n")
+    append("ESTIMATED TOTAL: ").append(money(subtotal + service + tax)).append("\n")
+    append(profile.footer)
+}
+private fun customerShareText(sale: Sale, profile: CompanyProfile): String = buildString {
+    val subtotal = sale.items.sumOf { it.total }
+    append(profile.name).append("\n")
+    if (profile.phone.isNotBlank()) append(profile.phone).append("\n")
+    if (profile.address.isNotBlank()) append(profile.address).append("\n")
+    append("RECEIPT #").append(sale.id).append("\n")
+    append("Date: ").append(date(sale.time)).append("\n")
+    if(sale.customerName.isNotBlank()) append("Customer: ").append(sale.customerName).append("\n")
+    if(sale.customerPhone.isNotBlank()) append("Phone: ").append(sale.customerPhone).append("\n")
+    append("------------------------------\n")
+    sale.items.forEach {
+        if (it.name.startsWith(CART_DISCOUNT_PREFIX)) {
+            append("Discount: -").append(money(kotlin.math.abs(it.total))).append("\n")
+        } else {
+            append(it.qty).append(" x ").append(it.name).append(" — ").append(money(it.total)).append("\n")
+        }
+    }
+    append("------------------------------\n")
+    append("Subtotal: ").append(money(subtotal)).append("\n")
+    if (sale.serviceCharge > 0.005) append(profile.serviceChargeLabel).append(": ").append(money(sale.serviceCharge)).append("\n")
+    if (sale.tax > 0.005) append(profile.taxLabel).append(": ").append(money(sale.tax)).append("\n")
+    append("TOTAL: ").append(money(sale.total)).append("\n")
+    append("Paid (").append(sale.paymentMethod).append("): ").append(money(sale.paidAmount)).append("\n")
+    if(sale.dueAmount > 0.005) append("Balance due: ").append(money(sale.dueAmount)).append("\n")
+    append(profile.footer)
 }
 
 @Composable fun QuickSale(cart:List<SaleItem>,voiceStatus:String,send:()->Unit,listen:()->Unit,openSpeechSettings:()->Unit,clear:()->Unit,manual:()->Unit,changeQty:(SaleItem,Int)->Unit){Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){Card(Modifier.fillMaxWidth()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Mic,null);Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text("Power Voice",fontWeight=FontWeight.Bold);Text(voiceStatus,style=MaterialTheme.typography.bodySmall)};IconButton(onClick=listen){Icon(Icons.Default.MicNone,"Listen")}};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button(onClick=manual,Modifier.weight(1f)){Text("MANUAL ADD")};OutlinedButton(onClick=listen,Modifier.weight(1f)){Text("VOICE")}};if(voiceStatus.contains("error",true)||voiceStatus.contains("unavailable",true)||voiceStatus.contains("failed",true))OutlinedButton(onClick=openSpeechSettings,Modifier.fillMaxWidth()){Text("Check speech language / settings")};Text("Try: 2 shawarma, 1 fries / add 3 tea / change shawarma price to 250",style=MaterialTheme.typography.bodySmall)}};Card(Modifier.fillMaxWidth()){Column(Modifier.padding(16.dp)){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Current Order",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);if(cart.isNotEmpty())TextButton(onClick=clear){Text("Clear")}};if(cart.isEmpty())EmptyState(Icons.Default.ShoppingCart,"No items","Use voice or manual add");cart.forEach{item->Row(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(item.name,fontWeight=FontWeight.SemiBold);Text("${item.qty} × ${money(item.price)}",style=MaterialTheme.typography.bodySmall)};IconButton(onClick={changeQty(item,-1)}){Icon(Icons.Default.Remove,null)};Text(money(item.total));IconButton(onClick={changeQty(item,1)}){Icon(Icons.Default.Add,null)}}};if(cart.isNotEmpty()){HorizontalDivider();Row(Modifier.fillMaxWidth().padding(top=10.dp),horizontalArrangement=Arrangement.SpaceBetween){Text("TOTAL",fontWeight=FontWeight.Bold);Text(money(cart.sumOf{it.total}),fontWeight=FontWeight.Bold)};Button(onClick=send,Modifier.fillMaxWidth().padding(top=10.dp)){Text("CUSTOMER / ORDER TYPE / PRINT")}}}}}}
@@ -101,6 +142,9 @@ fun KitchenQueue(
                             TextButton(onClick = { pay(order) }) { Text("PAY & PRINT") }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { shareText(context, "Share customer quotation", customerQuoteText(order, profile)) }) {
+                                Text("SHARE CUSTOMER QUOTE")
+                            }
                             OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) {
                                 Text("SHARE KITCHEN SLIP")
                             }
