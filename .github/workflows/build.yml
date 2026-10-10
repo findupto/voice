@@ -11,6 +11,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -34,6 +35,11 @@ jobs:
         run: gradle :app:testDebugUnitTest :app:lintDebug --no-daemon
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.conf
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Install and smoke-test APK on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -42,6 +48,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell pm grant com.findupto.voicepos android.permission.RECORD_AUDIO
