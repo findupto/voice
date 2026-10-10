@@ -26,54 +26,118 @@ fun MultiAddCartDialog(
     var customQty by remember { mutableStateOf("1") }
     var customPrice by remember { mutableStateOf("") }
     val quantities = remember { mutableStateMapOf<Long, Int>() }
-    val filtered = menu.filter { it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true) }.take(100)
+    val filtered = menu.filter {
+        it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true)
+    }.take(30)
     val selectedCount = quantities.values.count { it > 0 }
-    AlertDialog(onDismissRequest = close, title = { Text("Quick Add Products") }, text = {
-        Column(Modifier.fillMaxWidth().heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search menu") }, singleLine = true)
-            Text("Select any number of menu items, then add them together.", style = MaterialTheme.typography.bodySmall)
-            LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(filtered, key = { it.id }) { item ->
-                    val qty = quantities[item.id] ?: 0
-                    Card(Modifier.fillMaxWidth().clickable { quantities[item.id] = if (qty > 0) 0 else 1 }) {
-                        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = qty > 0, onCheckedChange = { quantities[item.id] = if (it) 1 else 0 })
-                            Column(Modifier.weight(1f)) {
-                                Text(item.name, style = MaterialTheme.typography.titleSmall)
-                                val detail = listOf(item.variant, item.size).filter(String::isNotBlank).joinToString(" • ")
-                                if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall)
-                                Text(money(item.price), style = MaterialTheme.typography.bodySmall)
-                            }
-                            if (qty > 0) {
-                                IconButton(onClick = { quantities[item.id] = (qty - 1).coerceAtLeast(1) }) { Text("−") }
-                                Text(qty.toString(), style = MaterialTheme.typography.titleMedium)
-                                IconButton(onClick = { quantities[item.id] = qty + 1 }) { Text("+") }
+
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text("Quick Add Products") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 620.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Keep custom sale at the top so staff never have to scroll through the menu.
+                Text("Quick Custom Sale", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = customName,
+                    onValueChange = { customName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Product — not in menu?") },
+                    singleLine = true
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = customQty,
+                        onValueChange = { customQty = it.filter(Char::isDigit).take(4) },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Qty") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customPrice,
+                        onValueChange = { customPrice = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Unit price") },
+                        singleLine = true
+                    )
+                }
+                Button(
+                    onClick = {
+                        val q = customQty.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                        val p = customPrice.toDoubleOrNull() ?: 0.0
+                        if (customName.isNotBlank() && p > 0) {
+                            addCustom(customName.trim(), q, p)
+                            customName = ""
+                            customPrice = ""
+                            customQty = "1"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = customName.isNotBlank() && (customPrice.toDoubleOrNull() ?: 0.0) > 0
+                ) { Text("ADD CUSTOM PRODUCT") }
+
+                HorizontalDivider()
+                Text("Or choose from menu", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Search menu") },
+                    singleLine = true
+                )
+                Text("Select menu items and quantities, then add them together.", style = MaterialTheme.typography.bodySmall)
+                LazyColumn(
+                    Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(filtered, key = { it.id }) { item ->
+                        val qty = quantities[item.id] ?: 0
+                        Card(Modifier.fillMaxWidth().clickable {
+                            quantities[item.id] = if (qty > 0) 0 else 1
+                        }) {
+                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = qty > 0,
+                                    onCheckedChange = { quantities[item.id] = if (it) 1 else 0 }
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.name, style = MaterialTheme.typography.titleSmall)
+                                    val detail = listOf(item.variant, item.size)
+                                        .filter(String::isNotBlank).joinToString(" • ")
+                                    if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall)
+                                    Text(money(item.price), style = MaterialTheme.typography.bodySmall)
+                                }
+                                if (qty > 0) {
+                                    IconButton(onClick = { quantities[item.id] = (qty - 1).coerceAtLeast(1) }) { Text("−") }
+                                    Text(qty.toString(), style = MaterialTheme.typography.titleMedium)
+                                    IconButton(onClick = { quantities[item.id] = qty + 1 }) { Text("+") }
+                                }
                             }
                         }
                     }
                 }
+                if (menu.isEmpty() || filtered.isEmpty()) {
+                    Text("No menu item found — add a custom product above.", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("$selectedCount menu product${if (selectedCount == 1) "" else "s"} selected", style = MaterialTheme.typography.labelLarge)
             }
-            if (menu.isEmpty() || filtered.isEmpty()) Text("No menu item found — use Quick Custom Sale below.", style = MaterialTheme.typography.bodySmall)
-            HorizontalDivider()
-            Text("Quick Custom Sale", style = MaterialTheme.typography.titleSmall)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(customName, { customName = it }, Modifier.weight(1f), label = { Text("Product") }, singleLine = true)
-                OutlinedTextField(customQty, { customQty = it.filter(Char::isDigit) }, Modifier.width(72.dp), label = { Text("Qty") }, singleLine = true)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(customPrice, { customPrice = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.weight(1f), label = { Text("Unit price") }, singleLine = true)
-                Button(onClick = {
-                    val q = customQty.toIntOrNull()?.coerceAtLeast(1) ?: 1
-                    val p = customPrice.toDoubleOrNull() ?: 0.0
-                    if (customName.isNotBlank() && p > 0) { addCustom(customName.trim(), q, p); customName = ""; customPrice = ""; customQty = "1" }
-                }, enabled = customName.isNotBlank() && (customPrice.toDoubleOrNull() ?: 0.0) > 0) { Text("ADD") }
-            }
-            Text("$selectedCount menu product${if (selectedCount == 1) "" else "s"} selected", style = MaterialTheme.typography.labelLarge)
-        }
-    }, confirmButton = { Button(onClick = {
-        addSelected(filtered.mapNotNull { item -> quantities[item.id]?.takeIf { it > 0 }?.let { item to it } })
-        close()
-    }, enabled = selectedCount > 0) { Text("ADD SELECTED") } }, dismissButton = { TextButton(onClick = close) { Text("DONE") } })
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    addSelected(filtered.mapNotNull { item ->
+                        quantities[item.id]?.takeIf { it > 0 }?.let { item to it }
+                    })
+                    close()
+                },
+                enabled = selectedCount > 0
+            ) { Text("ADD SELECTED") }
+        },
+        dismissButton = { TextButton(onClick = close) { Text("DONE") } }
+    )
 }
 
 @Composable
