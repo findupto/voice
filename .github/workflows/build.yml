@@ -95,7 +95,9 @@ jobs:
             for tab, label in [("Menu","SMART MENU SCANNER"),("Kitchen","Kitchen Queue"),("Sales","Sales"),("Expenses","Expenses"),("Analytics","Analytics")]:
                 click(tab); expect(label)
             click("Sale")
-            click("ADD PRODUCTS"); expect("Quick custom product"); expect("ADD CUSTOM PRODUCT"); expect("Search menu")
+            click("ADD PRODUCTS"); expect("Quick Custom Sale"); expect("ADD CUSTOM PRODUCT"); expect("Search menu")
+            labels=[n.attrib.get("text","") for n in nodes()]
+            assert labels.index("Quick Custom Sale") < labels.index("Search menu"), "Custom sale entry must appear before menu search/list"
             click("DONE")
             click("Settings"); expect("Business Transfer"); expect("Company Name"); click("SAVE")
             click("Tax, currency & service"); expect("Tax, Currency & Service"); click("CANCEL")
