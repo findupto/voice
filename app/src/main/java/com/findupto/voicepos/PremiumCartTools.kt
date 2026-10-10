@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 const val CART_DISCOUNT_PREFIX = "__CART_DISCOUNT__"
-fun cartDiscount(cart: List<SaleItem>): Double = -cart.filter { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }.coerceAtLeast(0.0)
+fun cartDiscount(cart: List<SaleItem>): Double = (-cart.filter { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }).coerceAtLeast(0.0)
 fun cartProductSubtotal(cart: List<SaleItem>): Double = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }
 
 @Composable
