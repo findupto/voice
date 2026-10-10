@@ -47,8 +47,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          force-avd-creation: true
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
             adb install -r app/build/outputs/apk/debug/app-debug.apk
