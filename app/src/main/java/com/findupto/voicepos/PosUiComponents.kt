@@ -74,9 +74,46 @@ filtered.forEach{item->Card(Modifier.fillMaxWidth().clickable{add(item)}){Row(Mo
 }
 @Composable fun MenuPage(menu:List<MenuItem>,store:Store,refresh:()->Unit,exportMenu:()->Unit,importMenu:()->Unit,scanDocument:()->Unit,addToCart:(MenuItem)->Unit){var adding by remember{mutableStateOf(false)};Column(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){Button(onClick={adding=true},Modifier.weight(1f)){Text("ADD")};OutlinedButton(onClick=exportMenu,Modifier.weight(1f)){Text("EXPORT")};OutlinedButton(onClick=importMenu,Modifier.weight(1f)){Text("IMPORT")}};Button(onClick=scanDocument,Modifier.fillMaxWidth()){Icon(Icons.Default.DocumentScanner,null);Spacer(Modifier.width(6.dp));Text("SMART MENU SCANNER — IMAGE / PDF / DOCX")};LazyColumn{items(menu){item->Card(Modifier.fillMaxWidth().padding(vertical=3.dp).clickable{addToCart(item)}){Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(item.name,fontWeight=FontWeight.SemiBold);Text(listOf(item.variant,item.size).filter(String::isNotBlank).joinToString(" • "));Text(money(item.price))};IconButton(onClick={store.removeMenuItem(item.id);refresh()}){Icon(Icons.Default.Delete,"Delete")}}}}}};if(adding)AddMenuDialog({n,v,s,p->store.addMenuItem(MenuItem(System.currentTimeMillis(),n.trim(),p,v.trim(),s.trim()));adding=false;refresh()}){adding=false}}
 @Composable fun AddMenuDialog(save:(String,String,String,Double)->Unit,close:()->Unit){var n by remember{mutableStateOf("")};var v by remember{mutableStateOf("")};var s by remember{mutableStateOf("")};var p by remember{mutableStateOf("")};AlertDialog(onDismissRequest=close,title={Text("Product / Variant / Size")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(n,{n=it},label={Text("Product")});OutlinedTextField(v,{v=it},label={Text("Variant")});OutlinedTextField(s,{s=it},label={Text("Size")});OutlinedTextField(p,{p=it},label={Text("Price")})}},confirmButton={TextButton(onClick={p.toDoubleOrNull()?.takeIf{it>0}?.let{if(n.isNotBlank())save(n,v,s,it)}}){Text("SAVE")}},dismissButton={TextButton(onClick=close){Text("CANCEL")}})}
-@Composable fun KitchenQueue(queue:List<PendingSale>,profile:CompanyProfile,printer:PrinterManager,pay:(PendingSale)->Unit,edit:(PendingSale)->Unit){
-val context=LocalContext.current
-Column(Modifier.fillMaxSize().padding(16.dp)){Text("Kitchen Queue",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);LazyColumn{items(queue){order->Card(Modifier.fillMaxWidth().padding(vertical=4.dp).clickable{edit(order)}){Column(Modifier.padding(12.dp)){Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("#${order.id} • ${order.orderType.replace('_',' ')}",fontWeight=FontWeight.Bold);Text(order.items.joinToString(", "){"${it.qty}× ${it.name}"});if(order.customerName.isNotBlank()||order.customerPhone.isNotBlank())Text(listOf(order.customerName,order.customerPhone).filter(String::isNotBlank).joinToString(" • "));if(order.customerAddress.isNotBlank())Text(order.customerAddress,style=MaterialTheme.typography.bodySmall)};TextButton(onClick={pay(order)}){Text("PAY & PRINT")}};Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={shareText(context,"Share kitchen slip",kitchenShareText(order,profile))}){Text("SHARE KITCHEN SLIP")};OutlinedButton(onClick={printer.printKitchen(kitchenReceipt(order,profile,ReceiptTheme.CLASSIC))}){Text("PRINT SLIP")}}}}}}}
+@Composable
+fun KitchenQueue(
+    queue: List<PendingSale>,
+    profile: CompanyProfile,
+    printer: PrinterManager,
+    pay: (PendingSale) -> Unit,
+    edit: (PendingSale) -> Unit
+) {
+    val context = LocalContext.current
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Kitchen Queue", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        LazyColumn {
+            items(queue) { order ->
+                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { edit(order) }) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("#${order.id} • ${order.orderType.replace('_', ' ')}", fontWeight = FontWeight.Bold)
+                                Text(order.items.joinToString(", ") { "${it.qty}× ${it.name}" })
+                                if (order.customerName.isNotBlank() || order.customerPhone.isNotBlank()) {
+                                    Text(listOf(order.customerName, order.customerPhone).filter(String::isNotBlank).joinToString(" • "))
+                                }
+                                if (order.customerAddress.isNotBlank()) Text(order.customerAddress, style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { pay(order) }) { Text("PAY & PRINT") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) {
+                                Text("SHARE KITCHEN SLIP")
+                            }
+                            OutlinedButton(onClick = { printer.printKitchen(kitchenReceipt(order, profile, ReceiptTheme.CLASSIC)) }) {
+                                Text("PRINT SLIP")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable fun EditDialog(order:PendingSale,save:(PendingSale)->Unit,close:()->Unit){var items by remember{mutableStateOf(order.items)};AlertDialog(onDismissRequest=close,title={Text("Edit Order")},text={Column{items.forEach{item->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("${item.qty} × ${item.name}",Modifier.weight(1f));IconButton(onClick={items=items.map{x->if(x==item)x.copy(qty=x.qty-1)else x}.filter{it.qty>0}}){Icon(Icons.Default.Remove,null)}}}}},confirmButton={TextButton(onClick={save(order.copy(items=items))}){Text("SAVE")}},dismissButton={TextButton(onClick=close){Text("CLOSE")}})}
 @Composable fun SalesPage(sales:List<Sale>,open:(Sale)->Unit){Column(Modifier.fillMaxSize().padding(16.dp)){Text("Sales",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);LazyColumn{items(sales.reversed()){sale->Card(Modifier.fillMaxWidth().padding(vertical=4.dp).clickable{open(sale)}){Row(Modifier.padding(12.dp)){Column(Modifier.weight(1f)){Text("Receipt #${sale.id} • ${sale.orderType.replace('_',' ')}",fontWeight=FontWeight.Bold);if(sale.customerName.isNotBlank()||sale.customerPhone.isNotBlank())Text(listOf(sale.customerName,sale.customerPhone).filter(String::isNotBlank).joinToString(" • "));if(sale.customerAddress.isNotBlank())Text(sale.customerAddress,style=MaterialTheme.typography.bodySmall);Text(date(sale.time))};Text(money(sale.total))}}}}}}
