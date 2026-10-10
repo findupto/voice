@@ -59,7 +59,7 @@ jobs:
             adb shell pm grant com.findupto.voicepos android.permission.BLUETOOTH_SCAN
             adb shell pm grant com.findupto.voicepos android.permission.BLUETOOTH_CONNECT
             adb logcat -c
-            adb shell am start -W -n com.findupto.voicepos/.MainActivity
+            timeout 30s adb shell am start -n com.findupto.voicepos/.MainActivity
             sleep 8
             adb shell pidof com.findupto.voicepos
             python3 - <<'PY'
@@ -106,7 +106,7 @@ jobs:
                 adb("shell","input","tap",str(x),str(y)); time.sleep(1.2); assert_running()
             # Reopen app cleanly and verify no fatal Android runtime crash occurred.
             adb("shell","am","force-stop",PKG)
-            adb("shell","am","start","-W","-n",PKG+"/.MainActivity")
+            adb("shell","am","start","-n",PKG+"/.MainActivity",timeout=20)
             time.sleep(4); assert_running()
             print("PASS: APK installed and launched; all six bottom-navigation positions tapped without terminating the app.")
             PY
