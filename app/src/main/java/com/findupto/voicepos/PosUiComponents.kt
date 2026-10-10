@@ -141,7 +141,7 @@ fun KitchenQueue(
                             }
                             TextButton(onClick = { pay(order) }) { Text("PAY & PRINT") }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { shareText(context, "Share customer quotation", customerQuoteText(order, profile)) }) {
                                 Text("SHARE CUSTOMER QUOTE")
                             }
