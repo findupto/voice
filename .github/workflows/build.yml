@@ -22,6 +22,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
+      - name: Run Android unit-test and lint checks
+        run: gradle :app:testDebugUnitTest :app:lintDebug --no-daemon
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
       - name: Verify APK
