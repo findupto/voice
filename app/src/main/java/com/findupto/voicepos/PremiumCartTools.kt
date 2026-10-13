@@ -12,7 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
-private fun normalizeNumericInput(value: String, decimal: Boolean): String {
+internal fun normalizeNumericInput(value: String, decimal: Boolean): String {
     val result = StringBuilder()
     var hasDecimal = false
     value.forEach { ch ->
