@@ -13,7 +13,7 @@ import java.io.ByteArrayOutputStream
 
 /** Shapes Urdu/RTL text with Android and prints the rendered receipt as ESC/POS raster data. */
 object ReceiptImage {
-    fun bitmap(text: String, width: Int = 384, textSize: Float = 22f): Bitmap {
+    fun bitmap(text: String, width: Int = 384, textSize: Float = 22f, padding: Int = 16): Bitmap {
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             color = Color.BLACK
             textSize = textSize
@@ -27,11 +27,11 @@ object ReceiptImage {
                 .setLineSpacing(1f, 1f)
                 .build()
         }
-        val height = (blocks.sumOf { it?.height ?: 12 } + 32).coerceIn(64, 30000)
+        val height = (blocks.sumOf { it?.height ?: 12 } + padding * 2).coerceIn(24, 30000)
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(Color.WHITE)
-        var y = 16f
+        var y = padding.toFloat()
         blocks.forEach { layout ->
             if (layout == null) y += 12f else {
                 canvas.save()
@@ -46,7 +46,7 @@ object ReceiptImage {
 
     /** Render one receipt line as raster data without resetting printer styles or layout. */
     fun escPosLine(text: String, width: Int = 384): ByteArray {
-        val source = bitmap(text, width, 18f)
+        val source = bitmap(text, width, 18f, 0)
         val bytesPerRow = source.width / 8
         val out = ByteArrayOutputStream()
         out.write(byteArrayOf(0x1D, 0x76, 0x30, 0x00, bytesPerRow.toByte(),
