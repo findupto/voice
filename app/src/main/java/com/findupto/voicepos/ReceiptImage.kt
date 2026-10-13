@@ -16,7 +16,7 @@ object ReceiptImage {
     fun bitmap(text: String, width: Int = 384, textSize: Float = 22f, padding: Int = 16): Bitmap {
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             color = Color.BLACK
-            textSize = textSize
+            this.textSize = textSize
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
         }
         val blocks = text.split('\n').map { line ->
