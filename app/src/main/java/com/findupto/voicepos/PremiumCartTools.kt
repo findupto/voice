@@ -8,7 +8,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+
+private fun normalizeNumericInput(value: String, decimal: Boolean): String {
+    val result = StringBuilder()
+    var hasDecimal = false
+    value.forEach { ch ->
+        val digit = ch.digitToIntOrNull()
+        if (digit != null) result.append(digit)
+        else if (decimal && (ch == '.' || ch == ',' || ch == '٫') && !hasDecimal) {
+            result.append('.')
+            hasDecimal = true
+        }
+    }
+    return result.toString().take(12)
+}
 
 const val CART_DISCOUNT_PREFIX = "__CART_DISCOUNT__"
 fun cartDiscount(cart: List<SaleItem>): Double = (-cart.filter { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }).coerceAtLeast(0.0)
@@ -51,16 +67,18 @@ fun MultiAddCartDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(
                         value = customQty,
-                        onValueChange = { customQty = it.filter(Char::isDigit).take(4) },
+                        onValueChange = { customQty = normalizeNumericInput(it, false).take(4) },
                         modifier = Modifier.weight(1f),
                         label = { Text("Qty") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = customPrice,
-                        onValueChange = { customPrice = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+                        onValueChange = { customPrice = normalizeNumericInput(it, true) },
                         modifier = Modifier.weight(1f),
                         label = { Text("Unit price") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true
                     )
                 }
@@ -153,7 +171,7 @@ fun DiscountDialog(base: Double, current: Double, apply: (Double) -> Unit, close
                 FilterChip(mode == "PERCENT", { mode = "PERCENT" }, label = { Text("%") })
                 FilterChip(mode == "AMOUNT", { mode = "AMOUNT" }, label = { Text("Amount") })
             }
-            OutlinedTextField(value, { value = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.fillMaxWidth(), label = { Text(if (mode == "PERCENT") "Discount %" else "Discount amount") }, singleLine = true)
+            OutlinedTextField(value, { value = normalizeNumericInput(it, true) }, Modifier.fillMaxWidth(), label = { Text(if (mode == "PERCENT") "Discount %" else "Discount amount") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
             Text("Discount: ${money(amount)}", style = MaterialTheme.typography.titleMedium)
             Text("New subtotal: ${money((base - amount).coerceAtLeast(0.0))}")
         }
