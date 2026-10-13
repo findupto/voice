@@ -20,12 +20,25 @@ import androidx.compose.ui.unit.dp
 
 
 private fun shareText(context: android.content.Context, title: String, body: String) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, title)
-        putExtra(Intent.EXTRA_TEXT, body)
+    runCatching {
+        val bitmap = ReceiptImage.bitmap(body, 576)
+        val directory = java.io.File(context.cacheDir, "shared_receipts").apply { mkdirs() }
+        val file = java.io.File(directory, "receipt_${System.currentTimeMillis()}.png")
+        java.io.FileOutputStream(file).use { out ->
+            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)) { "Could not create receipt image" }
+        }
+        bitmap.recycle()
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "Could not share receipt image: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
     }
-    context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 private fun kitchenShareText(order: PendingSale, profile: CompanyProfile): String = buildString {
     append(profile.name).append("\nKITCHEN ORDER #").append(order.id).append("\n")
