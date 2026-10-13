@@ -115,8 +115,8 @@ AlertDialog(onDismissRequest=close,title={Text("Add Product")},text={Column(Modi
 Text("Quick custom product",fontWeight=FontWeight.Bold)
 OutlinedTextField(value=name,onValueChange={name=it},modifier=Modifier.fillMaxWidth(),label={Text("Product — not in menu? Type it here")},singleLine=true)
 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-OutlinedTextField(value=qty,onValueChange={qty=it.filter(Char::isDigit).take(4)},modifier=Modifier.weight(1f),label={Text("Qty")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),singleLine=true)
-OutlinedTextField(value=price,onValueChange={price=it.filter{ch->ch.isDigit()||ch=='.'}.take(12)},modifier=Modifier.weight(1f),label={Text("Unit price")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),singleLine=true)
+OutlinedTextField(value=qty,onValueChange={qty=normalizeNumericInput(it,false).take(4)},modifier=Modifier.weight(1f),label={Text("Qty")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),singleLine=true)
+OutlinedTextField(value=price,onValueChange={price=normalizeNumericInput(it,true)},modifier=Modifier.weight(1f),label={Text("Unit price")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),singleLine=true)
 }
 Button(onClick={val q=qty.toIntOrNull()?:0;val p=price.toDoubleOrNull();if(name.isNotBlank()&&q>0&&p!=null&&p>=0){addCustom(name.trim(),q,p);name="";price="";qty="1"}},Modifier.fillMaxWidth()){Text("ADD CUSTOM PRODUCT")}
 HorizontalDivider()
