@@ -1,6 +1,17 @@
 package com.findupto.voicepos
 
 data class MenuItem(val id: Long, val name: String, val price: Double, val variant: String = "", val size: String = "")
+
+// Normalize portion words so "Half Hot Wings" and "Hot Wings Half" are one product.
+fun canonicalProductKey(name: String): String {
+    val words = name.lowercase(java.util.Locale.ROOT)
+        .replace("&", " and ")
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    val portions = setOf("half", "full", "small", "medium", "large", "regular", "quarter")
+    return (words.filter { it in portions }.distinct().sorted() +
+        words.filterNot { it in portions }).joinToString(" ")
+}
 data class SaleItem(val name: String, val qty: Int, val price: Double) { val total: Double get() = qty * price }
 data class Sale(
     val id: Long, val items: List<SaleItem>, val total: Double, val time: Long,

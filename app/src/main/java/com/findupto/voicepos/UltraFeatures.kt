@@ -82,7 +82,7 @@ private fun ShiftPanel(store: Store, refresh: () -> Unit) {
     val s = store.activeShift()
     var person by remember { mutableStateOf("") }
     var opening by remember { mutableStateOf("0") }
-    var closing by remember { mutableStateOf("0") }
+    var closing by remember(s?.id) { mutableStateOf(s?.let { fmt(store.expectedShiftCash(it.id)) } ?: "0") }
     var closeMode by remember { mutableStateOf(false) }
     Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (s == null) {
@@ -94,7 +94,7 @@ private fun ShiftPanel(store: Store, refresh: () -> Unit) {
             Text("ACTIVE SHIFT", fontWeight = FontWeight.Bold)
             Text("${s.person} • ${SimpleDateFormat("dd MMM, hh:mm a", Locale.US).format(Date(s.openedAt))}")
             Text("Opening cash: ${CurrencySettings.symbol} ${fmt(s.openingCash)}")
-            Text("Expected cash: ${CurrencySettings.symbol} ${fmt(store.expectedShiftCash(s.id))}")
+            Text("Expected closing cash (opening + cash received − cash expenses): ${CurrencySettings.symbol} ${fmt(store.expectedShiftCash(s.id))}")
             Text("Sales: ${CurrencySettings.symbol} ${fmt(store.shiftSales(s.id).sumOf { it.total })}")
             Text("Expenses: ${CurrencySettings.symbol} ${fmt(store.shiftExpenses(s.id).sumOf { it.amount })}")
             Button(onClick = { closeMode = true }, modifier = Modifier.fillMaxWidth()) { Text("CLOSE / HANDOVER SHIFT") }
@@ -102,7 +102,7 @@ private fun ShiftPanel(store: Store, refresh: () -> Unit) {
     }
     if (closeMode && s != null) AlertDialog(
         onDismissRequest = { closeMode = false }, title = { Text("Close Shift") },
-        text = { OutlinedTextField(closing, { closing = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Counted cash") }) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { val expected = store.expectedShiftCash(s.id); val counted = closing.toDoubleOrNull(); Text("Expected cash: ${CurrencySettings.symbol} ${fmt(expected)}", fontWeight = FontWeight.Bold); OutlinedTextField(closing, { closing = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Counted cash in drawer") }); if (counted != null) Text("Difference: ${CurrencySettings.symbol} ${fmt(counted - expected)}", color = if (kotlin.math.abs(counted - expected) < 0.005) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) } },
         confirmButton = { Button(onClick = { store.closeShift(s.id, closing.toDoubleOrNull() ?: 0.0); closeMode = false; refresh() }) { Text("CLOSE SHIFT") } },
         dismissButton = { TextButton(onClick = { closeMode = false }) { Text("CANCEL") } }
     )
