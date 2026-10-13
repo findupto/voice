@@ -10,6 +10,8 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -46,8 +48,8 @@ fun AmendPendingOrderDialog(
                 Text("Quick custom product", fontWeight = FontWeight.Bold)
                 OutlinedTextField(customName, { customName = it }, Modifier.fillMaxWidth(), label = { Text("Product name (not in menu)") }, singleLine = true)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(customQty, { customQty = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text("Qty") }, singleLine = true)
-                    OutlinedTextField(customPrice, { customPrice = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) }, Modifier.weight(1f), label = { Text("Unit price") }, singleLine = true)
+                    OutlinedTextField(customQty, { customQty = normalizeNumericInput(it, false).take(4) }, Modifier.weight(1f), label = { Text("Qty") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                    OutlinedTextField(customPrice, { customPrice = normalizeNumericInput(it, true) }, Modifier.weight(1f), label = { Text("Unit price") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
                 }
                 Button(onClick = {
                     val qty = customQty.toIntOrNull() ?: 1
