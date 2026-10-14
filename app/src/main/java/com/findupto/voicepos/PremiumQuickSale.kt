@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun PremiumQuickSale(
-    cart: List<SaleItem>, send: () -> Unit, clear: () -> Unit, manual: () -> Unit, discount: () -> Unit,
+    cart: List<SaleItem>, menu: List<MenuItem>, addProduct: (MenuItem) -> Unit, send: () -> Unit, clear: () -> Unit, manual: () -> Unit, discount: () -> Unit,
     changeQty: (SaleItem, Int) -> Unit, hold: () -> Unit
 ) {
     val products = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
@@ -22,17 +22,39 @@ fun PremiumQuickSale(
     val subtotal = cartProductSubtotal(cart)
     val total = cart.sumOf { it.total }
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PointOfSale, null); Spacer(Modifier.width(8.dp))
+                    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)) {
+                        Icon(Icons.Default.PointOfSale, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(12.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Quick Sale", fontWeight = FontWeight.Bold)
-                        Text("Tap products, adjust quantities, apply discounts, then settle payment.", style = MaterialTheme.typography.bodySmall)
+                        Text("QUICK CHECKOUT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                        Text("Build an order", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                        Text("Tap a product to add it instantly.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondary.copy(alpha = .14f)) {
+                        Text("${products.size} items", modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                Button(onClick = manual, Modifier.fillMaxWidth()) { Text("ADD PRODUCTS") }
-                Text("Multi-add: choose several products and quantities in one step.", style = MaterialTheme.typography.bodySmall)
+                if (menu.isNotEmpty()) {
+                    menu.take(8).chunked(2).forEach { rowItems ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rowItems.forEach { product ->
+                                Card(Modifier.weight(1f), onClick = { addProduct(product) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+                                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Icon(Icons.Default.AddShoppingCart, null, tint = MaterialTheme.colorScheme.primary)
+                                        Text(product.name, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                                        Text(money(product.price), color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+                OutlinedButton(onClick = manual, Modifier.fillMaxWidth()) { Icon(Icons.Default.Search, null); Spacer(Modifier.width(8.dp)); Text("SEARCH MENU / CUSTOM ITEM") }
             }
         }
         Card(Modifier.fillMaxWidth()) {
