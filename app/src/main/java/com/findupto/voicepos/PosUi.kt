@@ -7,12 +7,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import java.text.SimpleDateFormat
 import java.util.*
-@Composable fun VoicePosTheme(content:@Composable ()->Unit){MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFF9B8CFF),secondary=Color(0xFF42D6A4)),content=content)}
+private val PosInk = Color(0xFF0A0E17)
+private val PosPanel = Color(0xFF121A28)
+private val PosViolet = Color(0xFF9B8CFF)
+private val PosMint = Color(0xFF52E0B2)
+@Composable fun VoicePosTheme(content:@Composable ()->Unit){
+ MaterialTheme(
+  colorScheme=darkColorScheme(primary=PosViolet,onPrimary=Color(0xFF171126),secondary=PosMint,onSecondary=Color(0xFF06251D),background=PosInk,onBackground=Color(0xFFF2F4FA),surface=PosPanel,onSurface=Color(0xFFF2F4FA),surfaceVariant=Color(0xFF202A3B),onSurfaceVariant=Color(0xFFB7C1D4),outline=Color(0xFF39465B),error=Color(0xFFFF718B)),
+  shapes=Shapes(extraSmall=RoundedCornerShape(10.dp),small=RoundedCornerShape(14.dp),medium=RoundedCornerShape(18.dp),large=RoundedCornerShape(24.dp),extraLarge=RoundedCornerShape(28.dp)),
+  content=content)
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun PosApp(store:Store,printer:PrinterManager,logoVersion:Int,exportMenu:()->Unit,importMenu:()->Unit,pickLogo:()->Unit,scanDocument:()->Unit,exportBackup:()->Unit,importBackup:()->Unit){
  var tab by remember{mutableIntStateOf(0)};var cart by remember{mutableStateOf(emptyList<SaleItem>())};var cash by remember{mutableStateOf(store.cash())};var tick by remember{mutableIntStateOf(0)};var editing by remember{mutableStateOf<PendingSale?>(null)};var amend by remember{mutableStateOf<PendingSale?>(null)};var settings by remember{mutableStateOf(false)};var printerSettings by remember{mutableStateOf(false)};var businessSettings by remember{mutableStateOf(false)};var expense by remember{mutableStateOf(false)};var opening by remember{mutableStateOf(!store.hasOpeningCash())};var selectedSale by remember{mutableStateOf<Sale?>(null)};var manualCart by remember{mutableStateOf(false)};var discountDialog by remember{mutableStateOf(false)};var customerDialog by remember{mutableStateOf(false)};var customerName by remember{mutableStateOf("")};var customerPhone by remember{mutableStateOf("")};var orderType by remember{mutableStateOf("DINE_IN")};var customerAddress by remember{mutableStateOf("")};var ultra by remember{mutableStateOf(false)};var settlementOrder by remember{mutableStateOf<PendingSale?>(null)};var inventoryOpen by remember{mutableStateOf(false)};var duesOpen by remember{mutableStateOf(false)}
