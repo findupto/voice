@@ -19,7 +19,7 @@ data class Sale(
     val paymentMethod: String = "CASH", val paidAmount: Double = total, val dueAmount: Double = 0.0, val shiftId: Long = 0L,
     val serviceCharge: Double = 0.0, val tax: Double = 0.0
 )
-data class PendingSale(val id: Long, val items: List<SaleItem>, val time: Long, val customerName: String = "", val customerPhone: String = "", val orderType: String = "DINE_IN", val customerAddress: String = "") { val total: Double get() = items.sumOf { it.total } }
+data class PendingSale(val id: Long, val items: List<SaleItem>, val time: Long, val customerName: String = "", val customerPhone: String = "", val orderType: String = "DINE_IN", val customerAddress: String = "", val shiftPerson: String = "") { val total: Double get() = items.sumOf { it.total } }
 data class Expense(val id: Long, val title: String, val category: String, val amount: Double, val time: Long, val paymentMethod: String = "CASH", val shiftId: Long = 0L)
 data class Shift(val id: Long, val person: String, val openedAt: Long, val openingCash: Double, val closedAt: Long = 0L, val closingCash: Double = 0.0, val status: String = "OPEN")
 data class DueAccount(val id: Long, val saleId: Long, val customerName: String, val customerPhone: String, val total: Double, val paid: Double, val createdAt: Long) { val balance: Double get() = (total - paid).coerceAtLeast(0.0) }
