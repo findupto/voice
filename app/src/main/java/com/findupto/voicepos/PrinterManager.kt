@@ -23,7 +23,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
     var kitchenConnected by mutableStateOf(false); private set
     var lastError by mutableStateOf(""); private set
     private val receiver=object:BroadcastReceiver(){override fun onReceive(c:Context?,i:Intent?){when(i?.action){BluetoothDevice.ACTION_FOUND->{val d:BluetoothDevice?=if(Build.VERSION.SDK_INT>=33)i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE,BluetoothDevice::class.java)else @Suppress("DEPRECATION") i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);if(d!=null){found[d.address]=d;devices=found.values.toList()}};BluetoothAdapter.ACTION_DISCOVERY_FINISHED->{discovering=false;refresh()}}}}
-    init{val f=IntentFilter().apply{addAction(BluetoothDevice.ACTION_FOUND);addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)};if(Build.VERSION.SDK_INT>=33)context.registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED)else @Suppress("DEPRECATION") context.registerReceiver(receiver,f);refresh();Handler(context.mainLooper).postDelayed({reconnectSaved()},700)}
+    init{val f=IntentFilter().apply{addAction(BluetoothDevice.ACTION_FOUND);addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)};if(Build.VERSION.SDK_INT>=33)context.registerReceiver(receiver,f,Context.RECEIVER_EXPORTED)else @Suppress("DEPRECATION") context.registerReceiver(receiver,f);refresh();Handler(context.mainLooper).postDelayed({reconnectSaved()},700)}
     private fun hasConnectPermission() = Build.VERSION.SDK_INT < 31 || context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
     private fun hasScanPermission() = Build.VERSION.SDK_INT < 31 || context.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
 
