@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
         Stat("Sales less expenses",sv-ev)
         Stat("Payments Received",received)
         Stat("Current Cash in Hand",cash)
+        val latestShift=store.shifts().filter{inRange(it.openedAt,range)}.maxByOrNull{it.openedAt}
+        Stat(if(latestShift==null)"Opening Counter Cash (no shift)" else "Opening Counter Cash • ${latestShift.person}",latestShift?.openingCash?:0.0)
         Stat("Outstanding Customer Dues",outstanding)
         HorizontalDivider()
         Text("PAYMENT BREAKDOWN — ${rangeName.uppercase()}",fontWeight=FontWeight.Bold)
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
                 append("Sales less expenses: ").append(money(sv-ev)).append("\n")
                 append("Payments received: ").append(money(received)).append("\n")
                 append("Current cash in hand: ").append(money(cash)).append("\n")
+                append("Opening counter cash").append(latestShift?.let{" (${it.person})"}.orEmpty()).append(": ").append(money(latestShift?.openingCash?:0.0)).append("\n")
                 append("Outstanding customer dues: ").append(money(outstanding)).append("\n\nPAYMENT BREAKDOWN\n")
                 methods.forEach{(method,amount)->append(method).append(": ").append(money(amount)).append("\n")}
                 append("\nTOP PRODUCTS\n")
