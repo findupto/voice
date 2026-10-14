@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-data class StockItem(
+data class InventoryStockItem(
     val id: Long,
     val name: String,
     val category: String,
@@ -46,16 +46,16 @@ private fun quantityInStockUnit(quantity: Double, recipeUnit: String, stockUnit:
 /** Local-first stock ledger. Recipe keys use the same canonical product naming as sales analytics. */
 class InventoryStore(context: Context) {
     private val prefs = context.getSharedPreferences("restaurant_inventory_v1", Context.MODE_PRIVATE)
-    fun items(): List<StockItem> {
+    fun items(): List<InventoryStockItem> {
         val a = JSONArray(prefs.getString("items", "[]"))
         return (0 until a.length()).mapNotNull { i -> runCatching {
             val o = a.getJSONObject(i)
-            StockItem(o.getLong("id"), o.getString("name"), o.optString("category", "Ingredient"),
+            InventoryStockItem(o.getLong("id"), o.getString("name"), o.optString("category", "Ingredient"),
                 o.optDouble("quantity", 0.0), o.optString("unit", "pcs"),
                 o.optDouble("minimum", 0.0), o.optDouble("unitCost", 0.0))
         }.getOrNull() }.sortedBy { it.name.lowercase() }
     }
-    private fun saveItems(xs: List<StockItem>) {
+    private fun saveItems(xs: List<InventoryStockItem>) {
         val a = JSONArray()
         xs.forEach { x -> a.put(JSONObject().put("id", x.id).put("name", x.name).put("category", x.category)
             .put("quantity", x.quantity).put("unit", x.unit).put("minimum", x.minimum).put("unitCost", x.unitCost)) }
@@ -64,7 +64,7 @@ class InventoryStore(context: Context) {
     fun addItem(name: String, category: String, quantity: Double, unit: String, minimum: Double, unitCost: Double): Boolean {
         if (name.isBlank() || unit.isBlank() || quantity < 0 || minimum < 0 || unitCost < 0) return false
         if (items().any { canonicalProductKey(it.name) == canonicalProductKey(name) }) return false
-        saveItems(items() + StockItem(System.currentTimeMillis(), name.trim(), category, quantity, unit.trim(), minimum, unitCost))
+        saveItems(items() + InventoryStockItem(System.currentTimeMillis(), name.trim(), category, quantity, unit.trim(), minimum, unitCost))
         logMovement(name.trim(), quantity, "Opening stock")
         return true
     }
@@ -75,7 +75,7 @@ class InventoryStore(context: Context) {
         logMovement(old.name, delta, reason)
         return true
     }
-    fun lowStock(): List<StockItem> = items().filter { it.quantity <= it.minimum }
+    fun lowStock(): List<InventoryStockItem> = items().filter { it.quantity <= it.minimum }
     fun recipes(): List<ProductRecipe> {
         val root = JSONObject(prefs.getString("recipes", "{}"))
         return root.keys().asSequence().mapNotNull { key -> runCatching {
