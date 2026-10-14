@@ -14,8 +14,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun PremiumQuickSale(
-    cart: List<SaleItem>, voiceStatus: String, send: () -> Unit, listen: () -> Unit,
-    openSpeechSettings: () -> Unit, clear: () -> Unit, manual: () -> Unit, discount: () -> Unit,
+    cart: List<SaleItem>, send: () -> Unit, clear: () -> Unit, manual: () -> Unit, discount: () -> Unit,
     changeQty: (SaleItem, Int) -> Unit, hold: () -> Unit
 ) {
     val products = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
@@ -26,16 +25,14 @@ fun PremiumQuickSale(
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) { Text("Power Voice", fontWeight = FontWeight.Bold); Text(voiceStatus, style = MaterialTheme.typography.bodySmall) }
-                    IconButton(onClick = listen) { Icon(Icons.Default.MicNone, "Listen") }
+                    Icon(Icons.Default.PointOfSale, null); Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Quick Sale", fontWeight = FontWeight.Bold)
+                        Text("Tap products, adjust quantities, apply discounts, then settle payment.", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = manual, Modifier.weight(1f)) { Text("ADD PRODUCTS") }
-                    OutlinedButton(onClick = listen, Modifier.weight(1f)) { Text("VOICE") }
-                }
-                Text("Multi-add: select many products and quantities in one step. Example: 2 shawarma + 1 fries + 3 tea.", style = MaterialTheme.typography.bodySmall)
-                if (voiceStatus.contains("error", true) || voiceStatus.contains("unavailable", true)) OutlinedButton(onClick = openSpeechSettings, Modifier.fillMaxWidth()) { Text("Check speech language / settings") }
+                Button(onClick = manual, Modifier.fillMaxWidth()) { Text("ADD PRODUCTS") }
+                Text("Multi-add: choose several products and quantities in one step.", style = MaterialTheme.typography.bodySmall)
             }
         }
         Card(Modifier.fillMaxWidth()) {
@@ -48,7 +45,7 @@ fun PremiumQuickSale(
                         if (cart.isNotEmpty()) TextButton(onClick = clear) { Text("Clear") }
                     }
                 }
-                if (cart.isEmpty()) EmptyState(Icons.Default.ShoppingCart, "No items", "Use ADD PRODUCTS or voice")
+                if (cart.isEmpty()) EmptyState(Icons.Default.ShoppingCart, "No items", "Use ADD PRODUCTS")
                 products.forEach { item ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text(item.name, fontWeight = FontWeight.SemiBold); Text("${item.qty} × ${money(item.price)}", style = MaterialTheme.typography.bodySmall) }
