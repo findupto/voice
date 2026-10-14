@@ -42,7 +42,7 @@ fun PremiumQuickSale(
                     menu.take(8).chunked(2).forEach { rowItems ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             rowItems.forEach { product ->
-                                Card(Modifier.weight(1f), onClick = { addProduct(product) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+                                Card(onClick = { addProduct(product) }, modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
                                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Icon(Icons.Default.AddShoppingCart, null, tint = MaterialTheme.colorScheme.primary)
                                         Text(product.name, fontWeight = FontWeight.SemiBold, maxLines = 2)
