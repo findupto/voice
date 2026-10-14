@@ -61,8 +61,8 @@ class MainActivity : ComponentActivity() {
         val scaled=if(scale<1f)Bitmap.createScaledBitmap(source,(source.width*scale).toInt().coerceAtLeast(1),(source.height*scale).toInt().coerceAtLeast(1),true)else source
         val f=File(filesDir,"branding/company_logo.png");f.parentFile?.mkdirs();FileOutputStream(f).use{out->require(scaled.compress(Bitmap.CompressFormat.PNG,100,out)){"PNG encoding failed"}}
         require(f.exists()&&f.length()>0){"logo file was not saved"}
-        store.saveProfile(store.profile().copy(logoPath=f.absolutePath,saleLogoEnabled=true,kitchenLogoEnabled=false));logoVersion.value++;scanStatus.value="Company logo uploaded ✓ (${f.length()/1024} KB)";voiceStatus.value="Logo saved successfully ✓"
-    }.onFailure{scanStatus.value="Could not upload logo: ${it.message}";voiceStatus.value="Logo upload failed — ${it.message}"}}
+        store.saveProfile(store.profile().copy(logoPath=f.absolutePath,saleLogoEnabled=true,kitchenLogoEnabled=false));logoVersion.value++;scanStatus.value="Company logo uploaded ✓ (${f.length()/1024} KB)";scanStatus.value="Logo saved successfully ✓"
+    }.onFailure{scanStatus.value="Could not upload logo: ${it.message}";scanStatus.value="Logo upload failed — ${it.message}"}}
 
     private fun writeMenuCsv(uri:Uri){val csv=buildString{appendLine("name,variant,size,price");store.menu().forEach{appendLine(listOf(it.name,it.variant,it.size,it.price).joinToString(","){"\"${it.toString().replace("\"","\"\"")}\""})}};contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{it.write(csv)}}
     private fun readMenuCsv(uri:Uri){val text=contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()}?:return;val imported=text.lines().drop(1).mapNotNull{val p=parseCsvLine(it);if(p.size>=4)p[0].takeIf{n->n.isNotBlank()}?.let{n->p[3].toDoubleOrNull()?.let{pr->MenuItem(System.currentTimeMillis(),n,pr,p[1],p[2])}}else null};if(imported.isNotEmpty()){store.saveMenu((store.menu()+imported).distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price});scanStatus.value="${imported.size} menu products imported"}}
