@@ -28,6 +28,21 @@ data class StockItem(
 data class RecipeComponent(val stockName: String, val quantity: Double, val unit: String)
 data class ProductRecipe(val productName: String, val components: List<RecipeComponent>)
 
+private fun quantityInStockUnit(quantity: Double, recipeUnit: String, stockUnit: String): Double? {
+    val from = recipeUnit.trim().lowercase()
+    val to = stockUnit.trim().lowercase()
+    if (from == to) return quantity
+    val grams = setOf("g", "gram", "grams")
+    val kilos = setOf("kg", "kgs", "kilogram", "kilograms")
+    val millilitres = setOf("ml", "millilitre", "milliliter", "millilitres", "milliliters")
+    val litres = setOf("l", "ltr", "litre", "liter", "litres", "liters")
+    if (from in grams && to in kilos) return quantity / 1000.0
+    if (from in kilos && to in grams) return quantity * 1000.0
+    if (from in millilitres && to in litres) return quantity / 1000.0
+    if (from in litres && to in millilitres) return quantity * 1000.0
+    return null
+}
+
 /** Local-first stock ledger. Recipe keys use the same canonical product naming as sales analytics. */
 class InventoryStore(context: Context) {
     private val prefs = context.getSharedPreferences("restaurant_inventory_v1", Context.MODE_PRIVATE)
@@ -73,6 +88,7 @@ class InventoryStore(context: Context) {
     fun addRecipeComponent(productName: String, stockName: String, quantity: Double, unit: String): Boolean {
         if (productName.isBlank() || stockName.isBlank() || quantity <= 0) return false
         val stock = items().firstOrNull { canonicalProductKey(it.name) == canonicalProductKey(stockName) } ?: return false
+        if (quantityInStockUnit(quantity, unit, stock.unit) == null) return false
         val root = JSONObject(prefs.getString("recipes", "{}"))
         val key = canonicalProductKey(productName)
         val old = root.optJSONObject(key) ?: JSONObject().put("productName", productName.trim()).put("components", JSONArray())
@@ -96,13 +112,18 @@ class InventoryStore(context: Context) {
         saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
             recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { c ->
                 val i = stock.indexOfFirst { canonicalProductKey(it.name) == canonicalProductKey(c.stockName) }
-                if (i >= 0) stock[i] = stock[i].copy(quantity = (stock[i].quantity - c.quantity * sold.qty).coerceAtLeast(0.0))
+                if (i >= 0) {
+                    val used = quantityInStockUnit(c.quantity, c.unit, stock[i].unit) ?: 0.0
+                    stock[i] = stock[i].copy(quantity = stock[i].quantity - used * sold.qty)
+                }
             }
         }
         saveItems(stock)
         saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
             recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { c ->
-                logMovement(c.stockName, -c.quantity * sold.qty, "Sale: ${sold.name}")
+                val stockItem = items().firstOrNull { canonicalProductKey(it.name) == canonicalProductKey(c.stockName) }
+                val used = stockItem?.let { quantityInStockUnit(c.quantity, c.unit, it.unit) } ?: c.quantity
+                logMovement(c.stockName, -used * sold.qty, "Sale: ${sold.name}")
             }
         }
     }
@@ -130,6 +151,7 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
     var unit by remember { mutableStateOf("pcs") }
     var minimum by remember { mutableStateOf("0") }
     var cost by remember { mutableStateOf("0") }
+    var adjustBy by remember { mutableStateOf("1") }
     var product by remember { mutableStateOf("") }
     var dealPrice by remember { mutableStateOf("") }
     var component by remember { mutableStateOf("") }
@@ -171,7 +193,13 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                     message = if (ok) "Stock item saved" else "Check fields or use a unique item name"
                     if (ok) { name = ""; qty = "0"; minimum = "0"; cost = "0"; tick++; refresh() }
                 }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("ADD STOCK ITEM") }
-                Text("Current stock", fontWeight = FontWeight.Bold)
+                val stockValue = stock.sumOf { it.quantity.coerceAtLeast(0.0) * it.unitCost }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Card(Modifier.weight(1f)) { Column(Modifier.padding(10.dp)) { Text("STOCK VALUE", style = MaterialTheme.typography.labelSmall); Text(money(stockValue), fontWeight = FontWeight.Bold) } }
+                    Card(Modifier.weight(1f)) { Column(Modifier.padding(10.dp)) { Text("LOW STOCK", style = MaterialTheme.typography.labelSmall); Text(inventory.lowStock().size.toString(), fontWeight = FontWeight.Bold, color = if (inventory.lowStock().isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary) } }
+                }
+                OutlinedTextField(adjustBy, { adjustBy = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Receive / adjust quantity") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Text("Current stock • use kg↔g and L↔ml recipes; other units must match.", fontWeight = FontWeight.Bold)
                 LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 190.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(stock, key = { it.id }) { item ->
                         Card {
@@ -184,8 +212,8 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                                     if (item.quantity <= item.minimum) Text("LOW", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick = { if (inventory.adjustStock(item.id, 1.0, "Received stock")) { tick++; refresh() } }) { Text("+1 ${item.unit}") }
-                                    OutlinedButton(onClick = { if (inventory.adjustStock(item.id, -1.0, "Manual adjustment")) { tick++; refresh() } }, enabled = item.quantity >= 1.0) { Text("−1 ${item.unit}") }
+                                    OutlinedButton(onClick = { val amount = adjustBy.toDoubleOrNull() ?: 0.0; if (inventory.adjustStock(item.id, amount, "Stock received")) { tick++; refresh() } }) { Text("+ Receive") }
+                                    OutlinedButton(onClick = { val amount = adjustBy.toDoubleOrNull() ?: 0.0; if (inventory.adjustStock(item.id, -amount, "Stock correction / waste")) { tick++; refresh() } }, enabled = (adjustBy.toDoubleOrNull() ?: 0.0) > 0 && item.quantity >= (adjustBy.toDoubleOrNull() ?: 0.0)) { Text("− Adjust") }
                                 }
                             }
                         }
