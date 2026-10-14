@@ -265,6 +265,10 @@ fun CustomerDuesManager(store: Store, close: () -> Unit, refresh: () -> Unit) {
     var amount by remember { mutableStateOf("") }
     var method by remember { mutableStateOf("CASH") }
     var message by remember { mutableStateOf("") }
+    var addMode by remember { mutableStateOf(false) }
+    var customerName by remember { mutableStateOf("") }
+    var customerPhone by remember { mutableStateOf("") }
+    var newAmount by remember { mutableStateOf("") }
     val dues = remember(tick) { store.dues() }
     AlertDialog(onDismissRequest = close, modifier = Modifier.fillMaxWidth(), title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -273,7 +277,8 @@ fun CustomerDuesManager(store: Store, close: () -> Unit, refresh: () -> Unit) {
         }
     }, text = {
         Column(Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Outstanding total: ${money(store.dueTotal())}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Outstanding total: ${money(store.dueTotal())}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Button(onClick = { addMode = !addMode }) { Text(if (addMode) "CANCEL" else "ADD DUE") } }
+            if (addMode) { OutlinedTextField(customerName, { customerName = it }, label = { Text("Customer name") }, singleLine = true, modifier = Modifier.fillMaxWidth()); OutlinedTextField(customerPhone, { customerPhone = it }, label = { Text("Phone (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth()); OutlinedTextField(newAmount, { newAmount = it.filter { c -> c.isDigit() || c == 46.toChar() } }, label = { Text("Amount owed") }, singleLine = true, modifier = Modifier.fillMaxWidth()); Button(onClick = { val v = newAmount.toDoubleOrNull(); if (v != null && store.addCustomerDue(customerName, customerPhone, v)) { customerName = ""; customerPhone = ""; newAmount = ""; addMode = false; tick++; message = "Customer due added"; refresh() } else message = "Enter a customer name and a valid amount" }, modifier = Modifier.fillMaxWidth()) { Text("SAVE CUSTOMER DUE") } }
             if (dues.isEmpty()) Text("No outstanding customer dues.")
             LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(dues, key = { it.id }) { due ->
@@ -282,7 +287,7 @@ fun CustomerDuesManager(store: Store, close: () -> Unit, refresh: () -> Unit) {
                         Text("Sale #${due.saleId} • ${due.customerPhone}", style = MaterialTheme.typography.bodySmall)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Balance: ${money(due.balance)}", Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                            Button(onClick = { selected = due; amount = due.balance.toString(); method = "CASH" }) { Text("RECEIVE") }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Button(onClick = { selected = due; amount = due.balance.toString(); method = "CASH" }) { Text("RECEIVE") }; TextButton(onClick = { store.removeDue(due.id); tick++; message = "Due removed from ledger"; refresh() }) { Text("REMOVE") } }
                         }
                     } }
                 }
