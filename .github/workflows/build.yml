@@ -139,7 +139,7 @@ jobs:
           name: Restaurant POS Premium v3.0 build ${{ github.run_number }}
           body: |
             Premium restaurant POS refresh: one-tap checkout, dark design system, inventory valuation, recipe unit conversions, customer dues, deals, reporting and local-first operations.
-          files: VoicePOS-${{ github.run_number }}.apk
+          files: RestaurantPOS-${{ github.run_number }}.apk
           make_latest: true
           fail_on_unmatched_files: true
         env:
