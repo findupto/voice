@@ -57,7 +57,6 @@ jobs:
           script: |
             set -euo pipefail
             adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell pm grant com.findupto.voicepos android.permission.RECORD_AUDIO
             adb shell pm grant com.findupto.voicepos android.permission.BLUETOOTH_SCAN
             adb shell pm grant com.findupto.voicepos android.permission.BLUETOOTH_CONNECT
             adb logcat -c
@@ -125,21 +124,21 @@ jobs:
           ls -lh app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk
       - name: Prepare downloadable APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoicePOS-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk RestaurantPOS-${{ github.run_number }}.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
         with:
           name: VoicePOS-APK-build-${{ github.run_number }}
-          path: VoicePOS-${{ github.run_number }}.apk
+          path: RestaurantPOS-${{ github.run_number }}.apk
           if-no-files-found: error
           retention-days: 90
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v2.3.0-build-${{ github.run_number }}
-          name: Voice POS Premium v2.3 build ${{ github.run_number }}
+          tag_name: v3.0.0-build-${{ github.run_number }}
+          name: Restaurant POS Premium v3.0 build ${{ github.run_number }}
           body: |
-            Enhanced Power Voice command understanding, structured menu OCR with variants and sizes, improved logo upload, and business backup/restore.
+            Premium restaurant POS refresh: one-tap checkout, dark design system, inventory valuation, recipe unit conversions, customer dues, deals, reporting and local-first operations.
           files: VoicePOS-${{ github.run_number }}.apk
           make_latest: true
           fail_on_unmatched_files: true
