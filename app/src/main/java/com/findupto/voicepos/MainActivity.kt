@@ -11,6 +11,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
+import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
+import android.Manifest
+import android.os.Build
 import androidx.compose.runtime.mutableStateOf
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -25,6 +28,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: Store
     private lateinit var printer: PrinterManager
     private val scanStatus=mutableStateOf("")
+    private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.refresh() }
     private val logoVersion=mutableStateOf(0)
     private val exportMenuLauncher=registerForActivityResult(CreateDocument("text/csv")){uri->uri?.let{writeMenuCsv(it)}}
     private val importMenuLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{readMenuCsv(it)}}
@@ -38,6 +42,8 @@ class MainActivity : ComponentActivity() {
         StoreMigration.migrate(this)
         store=Store(this)
         printer=PrinterManager(this,store)
+        val bluetoothPermissions=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        if(bluetoothPermissions.any{checkSelfPermission(it)!=android.content.pm.PackageManager.PERMISSION_GRANTED}) bluetoothPermissionLauncher.launch(bluetoothPermissions)
         setContent {
             VoicePosTheme {
                 PosApp(
@@ -65,7 +71,7 @@ class MainActivity : ComponentActivity() {
     }.onFailure{scanStatus.value="Could not upload logo: ${it.message}";scanStatus.value="Logo upload failed — ${it.message}"}}
 
     private fun writeMenuCsv(uri:Uri){val csv=buildString{appendLine("name,variant,size,price");store.menu().forEach{appendLine(listOf(it.name,it.variant,it.size,it.price).joinToString(","){"\"${it.toString().replace("\"","\"\"")}\""})}};contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{it.write(csv)}}
-    private fun readMenuCsv(uri:Uri){val text=contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()}?:return;val imported=text.lines().drop(1).mapNotNull{val p=parseCsvLine(it);if(p.size>=4)p[0].takeIf{n->n.isNotBlank()}?.let{n->p[3].toDoubleOrNull()?.let{pr->MenuItem(System.currentTimeMillis(),n,pr,p[1],p[2])}}else null};if(imported.isNotEmpty()){store.saveMenu((store.menu()+imported).distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price});scanStatus.value="${imported.size} menu products imported"}}
+    private fun readMenuCsv(uri:Uri){runCatching{val text=contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()}?:error("Could not read CSV");val lines=text.removePrefix("\uFEFF").lines().filter{it.isNotBlank()};require(lines.isNotEmpty()){"CSV is empty"};val first=parseCsvLine(lines.first()).map{it.trim().lowercase()};val hasHeader=first.any{it in setOf("name","product","product name")}||first.any{it=="price"};val rows=if(hasHeader)lines.drop(1)else lines;val existing=store.menu().toMutableList();var added=0;var updated=0;rows.forEach{line->val p=parseCsvLine(line);if(p.size>=2){val name=p[0].trim();val priceIndex=if(p.size>=4)3 else 1;val price=p.getOrNull(priceIndex)?.replace(",","")?.trim()?.toDoubleOrNull();if(name.isNotBlank()&&price!=null&&price>=0){val variant=p.getOrNull(if(p.size>=4)1 else 2).orEmpty().trim();val size=p.getOrNull(if(p.size>=4)2 else 3).orEmpty().trim();val idx=existing.indexOfFirst{it.name.equals(name,true)&&it.variant.equals(variant,true)&&it.size.equals(size,true)};if(idx>=0){existing[idx]=existing[idx].copy(price=price);updated++}else{existing.add(MenuItem(System.currentTimeMillis()+added,name,price,variant,size));added++}}}};require(added+updated>0){"No valid products found. Use columns name,variant,size,price"};store.saveMenu(existing);scanStatus.value="Bulk import complete: $added added, $updated updated"} .onFailure{scanStatus.value="CSV import failed: ${it.message}"}}
     private fun readDocxText(uri:Uri):String=buildString{contentResolver.openInputStream(uri)?.use{input->ZipInputStream(input).use{zip->while(true){val e=zip.nextEntry?:break;if(e.name=="word/document.xml"){val raw=zip.readBytes().toString(Charsets.UTF_8);append(raw.replace(Regex("<w:tab[^>]*/>")," ").replace(Regex("</w:p>"),"\n").replace(Regex("<[^>]+>")," ").replace(Regex("\\s+")," ").trim())}}}}}
     private fun scanMenuDocument(uri:Uri){scanStatus.value="Reading menu… detecting product / variant / size / price rows";val mime=contentResolver.getType(uri).orEmpty().lowercase(Locale.US);if(mime.contains("wordprocessingml")||uri.toString().lowercase().contains(".docx")){runCatching{val text=readDocxText(uri);val clean=MenuScanParser.parse(text);if(clean.isNotEmpty()){store.saveMenu((store.menu()+clean).distinctBy{it.name.lowercase()+"|"+it.variant.lowercase()+"|"+it.size.lowercase()+"|"+it.price});scanStatus.value="DOCX: ${clean.size} structured menu variants imported ✓"}else scanStatus.value="DOCX opened, but no confident product + price rows were found"}.onFailure{scanStatus.value="DOCX read failed: ${it.message}"};return}
         val images=mutableListOf<Bitmap>();runCatching{if(mime=="application/pdf"||uri.toString().lowercase().endsWith(".pdf")){contentResolver.openFileDescriptor(uri,"r")!!.use{fd->PdfRenderer(fd).use{r->for(i in 0 until r.pageCount.coerceAtMost(50)){r.openPage(i).use{page->val scale=3;val b=Bitmap.createBitmap(page.width*scale,page.height*scale,Bitmap.Config.ARGB_8888);b.eraseColor(Color.WHITE);page.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);images+=b}}}}}else{contentResolver.openInputStream(uri)?.use{val b=BitmapFactory.decodeStream(it);if(b!=null)images+=b}}}.onFailure{scanStatus.value="Could not open menu: ${it.message}";return}
