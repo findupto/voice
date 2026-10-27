@@ -35,6 +35,7 @@ data class DiscountCard(
     val id: String, val token: String, val name: String, val phone: String,
     val type: String, val value: Double, val expiry: Long, val maxUses: Int, val uses: Int = 0
 ) {
+    val cardNumber: String get() = "VC-" + id.replace("-", "").take(8).uppercase(Locale.US)
     val qrPayload: String get() = "VOICEPOS-DISCOUNT|$id|$token"
     val expired: Boolean get() = expiry > 0L && System.currentTimeMillis() > expiry
     val exhausted: Boolean get() = maxUses > 0 && uses >= maxUses
@@ -169,7 +170,9 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                 selected?.let { c ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(c.discountLabel(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text("✦ VOICE PRIVILEGE CLUB ✦", style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color(0xFFE7C77A), fontWeight = FontWeight.Bold)
+                            Text(c.discountLabel(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, color = androidx.compose.ui.graphics.Color(0xFFFFD982))
+                            Text(c.cardNumber, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color(0xFFE7C77A), fontWeight = FontWeight.Bold)
                             Text(c.name + if (c.phone.isNotBlank()) " • ${c.phone}" else "")
                             Text("Expiry: " + if (c.expiry == 0L) "No expiry" else c.expiry.toDateLabel())
                             Image(bitmap = remember(c.id) { store.qr(c.qrPayload).asImageBitmap() }, contentDescription = "Discount card QR code", modifier = Modifier.size(190.dp))
