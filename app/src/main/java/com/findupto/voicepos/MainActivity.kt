@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private val logoLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{saveLogo(it)}}
     private val scanLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{scanMenuDocument(it)}}
     private val discountCardScanLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{scanDiscountCardImage(it)}}
+    private val liveDiscountScannerLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()){ result -> if(result.resultCode==RESULT_OK) result.data?.getStringExtra(LiveQrScannerActivity.EXTRA_QR_CODE)?.let{scannedDiscountCode.value=it} }
     private val backupExportLauncher=registerForActivityResult(CreateDocument("application/json")){uri->uri?.let{contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{w->w.write(store.exportBackup())};scanStatus.value="Full business backup exported"}}
     private val backupImportLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{runCatching{val raw=contentResolver.openInputStream(uri)?.bufferedReader()?.use{r->r.readText()}?:"";store.importBackup(raw);scanStatus.value="Business data restored successfully — restart the app"}.onFailure{scanStatus.value="Backup import failed: ${it.message}"}}}
 
@@ -55,7 +56,7 @@ class MainActivity : ComponentActivity() {
                     { scanLauncher.launch(arrayOf("image/*","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/csv","text/plain")) },
                     { backupExportLauncher.launch("voice-pos-business-backup.json") },
                     { backupImportLauncher.launch(arrayOf("application/json","text/json")) },
-                    { discountCardScanLauncher.launch(arrayOf("image/*")) }, scannedDiscountCode.value, { scannedDiscountCode.value = "" }
+                    { liveDiscountScannerLauncher.launch(Intent(this, LiveQrScannerActivity::class.java)) }, scannedDiscountCode.value, { scannedDiscountCode.value = "" }
                 )
             }
         }
