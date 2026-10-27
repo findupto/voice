@@ -27,13 +27,14 @@ import java.util.zip.ZipInputStream
 class MainActivity : ComponentActivity() {
     private lateinit var store: Store
     private lateinit var printer: PrinterManager
-    private val scanStatus=mutableStateOf("")
+    private val scanStatus=mutableStateOf(""); private val scannedDiscountCode=mutableStateOf("")
     private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.refresh() }
     private val logoVersion=mutableStateOf(0)
     private val exportMenuLauncher=registerForActivityResult(CreateDocument("text/csv")){uri->uri?.let{writeMenuCsv(it)}}
     private val importMenuLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{readMenuCsv(it)}}
     private val logoLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{saveLogo(it)}}
     private val scanLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{scanMenuDocument(it)}}
+    private val discountCardScanLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{scanDiscountCardImage(it)}}
     private val backupExportLauncher=registerForActivityResult(CreateDocument("application/json")){uri->uri?.let{contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{w->w.write(store.exportBackup())};scanStatus.value="Full business backup exported"}}
     private val backupImportLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{runCatching{val raw=contentResolver.openInputStream(uri)?.bufferedReader()?.use{r->r.readText()}?:"";store.importBackup(raw);scanStatus.value="Business data restored successfully — restart the app"}.onFailure{scanStatus.value="Backup import failed: ${it.message}"}}}
 
@@ -53,9 +54,31 @@ class MainActivity : ComponentActivity() {
                     { logoLauncher.launch(arrayOf("image/png","image/jpeg","image/webp")) },
                     { scanLauncher.launch(arrayOf("image/*","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","text/csv","text/plain")) },
                     { backupExportLauncher.launch("voice-pos-business-backup.json") },
-                    { backupImportLauncher.launch(arrayOf("application/json","text/json")) }
+                    { backupImportLauncher.launch(arrayOf("application/json","text/json")) },
+                    { discountCardScanLauncher.launch(arrayOf("image/*")) }, scannedDiscountCode.value, { scannedDiscountCode.value = "" }
                 )
             }
+        }
+    }
+
+
+    private fun scanDiscountCardImage(uri: Uri) {
+        runCatching {
+            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                ?: error("Could not open selected image")
+            val scanner = BarcodeScanning.getClient()
+            scanner.process(InputImage.fromBitmap(bitmap, 0))
+                .addOnSuccessListener { barcodes ->
+                    val code = barcodes.firstOrNull { it.rawValue?.startsWith("VOICEPOS-DISCOUNT|") == true }?.rawValue
+                    if (code != null) scannedDiscountCode.value = code
+                    else android.widget.Toast.makeText(this, "No Voice POS discount QR found in that image", android.widget.Toast.LENGTH_LONG).show()
+                }
+                .addOnFailureListener { e ->
+                    android.widget.Toast.makeText(this, "QR scan failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                }
+                .addOnCompleteListener { scanner.close(); bitmap.recycle() }
+        }.onFailure {
+            android.widget.Toast.makeText(this, "Could not scan image: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
