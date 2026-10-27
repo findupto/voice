@@ -22,6 +22,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
+@androidx.camera.core.ExperimentalGetImage
 class LiveQrScannerActivity : ComponentActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private val handled = AtomicBoolean(false)
