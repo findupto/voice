@@ -122,9 +122,27 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                     Text("DISCOUNT CARDS", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = onClose) { Text("CLOSE") }
                 }
-                Text("Create QR coupons, share them, and validate redemption on this device.", style = MaterialTheme.typography.bodySmall)
+                Text("Create branded QR coupons, reward loyal customers, and track redemptions on this device.", style = MaterialTheme.typography.bodySmall)
+                val activeCount = cards.count { it.active }
+                val redeemedCount = cards.sumOf { it.uses }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("TOTAL CARDS" to cards.size.toString(), "ACTIVE" to activeCount.toString(), "REDEEMED" to redeemedCount.toString()).forEach { (label, amount) ->
+                        Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                            Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(amount, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                Text(label, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
                 HorizontalDivider()
                 Text("CREATE A CARD", fontWeight = FontWeight.Bold)
+                Text("QUICK DISCOUNT PRESETS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("5", "10", "15", "20", "25").forEach { preset ->
+                        FilterChip(selected = type == "PERCENT" && value == preset, onClick = { type = "PERCENT"; value = preset }, label = { Text("$preset%") })
+                    }
+                }
                 OutlinedTextField(name, { name = it }, label = { Text("Customer name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp / phone number") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
