@@ -66,6 +66,12 @@ class DiscountCardStore(context: Context) {
         save(cards() + c)
         return c
     }
+    fun update(card: DiscountCard, name: String, phone: String, type: String, value: Double, expiry: Long, maxUses: Int): DiscountCard {
+        val updated = card.copy(name = name.trim(), phone = phone.trim(), type = type, value = value, expiry = expiry, maxUses = maxUses)
+        save(cards().map { if (it.id == card.id) updated else it })
+        return updated
+    }
+    fun remove(card: DiscountCard) { save(cards().filterNot { it.id == card.id }) }
     fun validate(payload: String): DiscountCard? {
         val p = payload.trim().split("|")
         if (p.size != 3 || p[0] != "VOICEPOS-DISCOUNT") return null
@@ -107,7 +113,8 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
     var type by remember { mutableStateOf("PERCENT") }
     var value by remember { mutableStateOf("10") }
     var expiry by remember { mutableStateOf("") }
-    var maxUses by remember { mutableStateOf("1") }
+    var maxUses by remember { mutableStateOf("0") }
+    var editing by remember { mutableStateOf<DiscountCard?>(null) }
     var manualCode by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<DiscountCard?>(null) }
@@ -137,7 +144,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                     }
                 }
                 HorizontalDivider()
-                Text("CREATE A CARD", fontWeight = FontWeight.Bold)
+                Text(if (editing == null) "CREATE A CARD" else "EDIT DISCOUNT CARD", fontWeight = FontWeight.Bold)
                 Text("QUICK DISCOUNT PRESETS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                     listOf("5", "10", "15", "20", "25").forEach { preset ->
@@ -152,20 +159,31 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value, { value = it.filter { c -> c.isDigit() || c == '.' }.take(8) }, label = { Text(if (type == "PERCENT") "Discount %" else "Amount off") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                    OutlinedTextField(maxUses, { maxUses = it.filter(Char::isDigit).take(4) }, label = { Text("Uses (0 = unlimited)") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                    OutlinedTextField(maxUses, { maxUses = it.filter(Char::isDigit).take(4) }, label = { Text("Usage limit (0 = unlimited)") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                 }
                 OutlinedTextField(expiry, { expiry = it.filter { c -> c.isDigit() || c == '-' }.take(10) }, label = { Text("Expiry date (YYYY-MM-DD, optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Button(onClick = {
-                    val amount = value.toDoubleOrNull()
-                    val date = if (expiry.isBlank()) 0L else expiry.dateAtEndOfDay()
-                    if (name.isBlank() || amount == null || amount <= 0 || (type == "PERCENT" && amount > 100) || maxUses.toIntOrNull() == null || maxUses.toInt() < 0 || (expiry.isNotBlank() && date == null)) {
-                        status = "Enter a customer name, valid discount, usage limit and YYYY-MM-DD expiry."
-                    } else {
-                        selected = store.create(name, phone, type, amount, date ?: 0L, maxUses.toInt())
-                        status = "Discount card created and saved."
-                        name = ""; phone = ""; value = "10"; expiry = ""; maxUses = "1"; tick++
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("Unlimited" to "0", "1 time" to "1", "2 times" to "2", "5 times" to "5", "10 times" to "10").forEach { (label, uses) ->
+                        FilterChip(selected = maxUses == uses, onClick = { maxUses = uses }, label = { Text(label) })
                     }
-                }, modifier = Modifier.fillMaxWidth()) { Text("GENERATE DISCOUNT CARD + QR") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = {
+                        val amount = value.toDoubleOrNull()
+                        val date = if (expiry.isBlank()) 0L else expiry.dateAtEndOfDay()
+                        if (name.isBlank() || amount == null || amount <= 0 || (type == "PERCENT" && amount > 100) || maxUses.toIntOrNull() == null || maxUses.toInt() < 0 || (expiry.isNotBlank() && date == null)) {
+                            status = "Enter a customer name, valid discount, usage limit and YYYY-MM-DD expiry."
+                        } else {
+                            val current = editing
+                            selected = if (current == null) store.create(name, phone, type, amount, date ?: 0L, maxUses.toInt()) else store.update(current, name, phone, type, amount, date ?: 0L, maxUses.toInt())
+                            status = if (current == null) "Discount card created and saved." else "Discount card updated."
+                            editing = null; name = ""; phone = ""; type = "PERCENT"; value = "10"; expiry = ""; maxUses = "0"; tick++
+                        }
+                    }, modifier = Modifier.weight(1f)) { Text(if (editing == null) "GENERATE CARD + QR" else "SAVE CHANGES") }
+                    if (editing != null) OutlinedButton(onClick = {
+                        editing = null; name = ""; phone = ""; type = "PERCENT"; value = "10"; expiry = ""; maxUses = "0"; status = "Edit cancelled."
+                    }) { Text("CANCEL") }
+                }
                 if (status.isNotBlank()) Text(status, color = if (status.contains("Invalid") || status.contains("Expired") || status.contains("not found") || status.contains("limit")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
                 selected?.let { c ->
                     Card(Modifier.fillMaxWidth()) {
@@ -174,7 +192,9 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                             Text(c.discountLabel(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, color = androidx.compose.ui.graphics.Color(0xFFFFD982))
                             Text(c.cardNumber, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color(0xFFE7C77A), fontWeight = FontWeight.Bold)
                             Text(c.name + if (c.phone.isNotBlank()) " • ${c.phone}" else "")
+                            Text("CARD NUMBER  ${c.cardNumber}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                             Text("Expiry: " + if (c.expiry == 0L) "No expiry" else c.expiry.toDateLabel())
+                            Text(if (c.maxUses == 0) "UNLIMITED REDEMPTIONS" else "LIMITED TO ${c.maxUses} USE(S)", style = MaterialTheme.typography.labelSmall)
                             Image(bitmap = remember(c.id) { store.qr(c.qrPayload).asImageBitmap() }, contentDescription = "Discount card QR code", modifier = Modifier.size(190.dp))
                             Text("Uses: ${c.uses}/${if (c.maxUses == 0) "∞" else c.maxUses}")
                             Button(onClick = { shareDiscountCard(context, store, c) }, modifier = Modifier.fillMaxWidth()) { Text("SHARE CARD") }
@@ -208,10 +228,25 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(c.name, fontWeight = FontWeight.SemiBold)
+                                Text(c.cardNumber, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 Text("${c.discountLabel()} • ${if (c.expiry == 0L) "No expiry" else c.expiry.toDateLabel()}", style = MaterialTheme.typography.bodySmall)
-                                Text(if (c.expired) "EXPIRED" else if (c.exhausted) "LIMIT REACHED" else "ACTIVE • ${c.uses}/${if (c.maxUses == 0) "∞" else c.maxUses}", style = MaterialTheme.typography.labelSmall)
+                                Text(if (c.expired) "EXPIRED" else if (c.exhausted) "LIMIT REACHED" else "ACTIVE • ${c.uses}/${if (c.maxUses == 0) "∞ unlimited" else c.maxUses}", style = MaterialTheme.typography.labelSmall)
                             }
-                            TextButton(onClick = { selected = c }) { Text("VIEW / SHARE") }
+                            Column(horizontalAlignment = Alignment.End) {
+                                TextButton(onClick = { selected = c }) { Text("VIEW") }
+                                TextButton(onClick = {
+                                    editing = c; selected = c; name = c.name; phone = c.phone; type = c.type
+                                    value = c.value.toString().removeSuffix(".0")
+                                    expiry = if (c.expiry == 0L) "" else SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(c.expiry))
+                                    maxUses = c.maxUses.toString(); status = "Editing ${c.cardNumber}."
+                                }) { Text("EDIT") }
+                                TextButton(onClick = {
+                                    store.remove(c)
+                                    if (selected?.id == c.id) selected = null
+                                    if (editing?.id == c.id) { editing = null; name = ""; phone = ""; expiry = "" }
+                                    tick++; status = "Removed ${c.cardNumber}."
+                                }) { Text("REMOVE") }
+                            }
                         }
                     }
                 }
