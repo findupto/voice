@@ -211,7 +211,8 @@ private fun shareDiscountCard(context: Context, store: DiscountCardStore, card: 
         canvas.drawText(card.discountLabel(), bitmap.width / 2f, qr.height + 38f, paint)
         canvas.drawText(card.name.take(34), bitmap.width / 2f, qr.height + 76f, paint)
         canvas.drawText("Expires: " + if (card.expiry == 0L) "Never" else card.expiry.toDateLabel(), bitmap.width / 2f, qr.height + 114f, paint)
-        val file = File(context.cacheDir, "discount_${card.id}.png")
+        val directory = File(context.cacheDir, "shared_receipts").apply { mkdirs() }
+        val file = File(directory, "discount_${card.id}.png")
         FileOutputStream(file).use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val text = "Discount card: ${card.discountLabel()}\nCustomer: ${card.name}\nCode: ${card.qrPayload}\nExpiry: ${if (card.expiry == 0L) "No expiry" else card.expiry.toDateLabel()}"
