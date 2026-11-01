@@ -33,13 +33,14 @@ import java.util.UUID
 
 data class DiscountCard(
     val id: String, val token: String, val name: String, val phone: String,
-    val type: String, val value: Double, val expiry: Long, val maxUses: Int, val uses: Int = 0
+    val type: String, val value: Double, val expiry: Long, val maxUses: Int, val uses: Int = 0,
+    val revoked: Boolean = false, val createdAt: Long = System.currentTimeMillis()
 ) {
     val cardNumber: String get() = "VC-" + id.replace("-", "").take(8).uppercase(Locale.US)
     val qrPayload: String get() = "VOICEPOS-DISCOUNT|$id|$token"
     val expired: Boolean get() = expiry > 0L && System.currentTimeMillis() > expiry
     val exhausted: Boolean get() = maxUses > 0 && uses >= maxUses
-    val active: Boolean get() = !expired && !exhausted
+    val active: Boolean get() = !revoked && !expired && !exhausted
     fun discountLabel(): String = if (type == "PERCENT") "${value}% OFF" else "${money(value)} OFF"
 }
 
@@ -50,14 +51,14 @@ class DiscountCardStore(context: Context) {
         (0 until arr.length()).map { i -> arr.getJSONObject(i).let { o ->
             DiscountCard(o.getString("id"), o.getString("token"), o.optString("name"), o.optString("phone"),
                 o.optString("type", "PERCENT"), o.optDouble("value"), o.optLong("expiry"),
-                o.optInt("maxUses"), o.optInt("uses"))
+                o.optInt("maxUses"), o.optInt("uses"), o.optBoolean("revoked", false), o.optLong("createdAt", 0L))
         } }
     }.getOrDefault(emptyList())
     private fun save(xs: List<DiscountCard>) {
         val arr = JSONArray()
         xs.forEach { c -> arr.put(JSONObject().put("id", c.id).put("token", c.token).put("name", c.name)
             .put("phone", c.phone).put("type", c.type).put("value", c.value).put("expiry", c.expiry)
-            .put("maxUses", c.maxUses).put("uses", c.uses)) }
+            .put("maxUses", c.maxUses).put("uses", c.uses).put("revoked", c.revoked).put("createdAt", c.createdAt)) }
         prefs.edit().putString("cards", arr.toString()).apply()
     }
     fun create(name: String, phone: String, type: String, value: Double, expiry: Long, maxUses: Int): DiscountCard {
@@ -71,7 +72,10 @@ class DiscountCardStore(context: Context) {
         save(cards().map { if (it.id == card.id) updated else it })
         return updated
     }
-    fun remove(card: DiscountCard) { save(cards().filterNot { it.id == card.id }) }
+    fun remove(card: DiscountCard) { save(cards().filterNot { it.id == card.id }); audit("CARD_REMOVED", card.id) }
+    fun setRevoked(card: DiscountCard, revoked: Boolean) { save(cards().map { if (it.id == card.id) it.copy(revoked = revoked) else it }); audit(if (revoked) "CARD_SUSPENDED" else "CARD_REACTIVATED", card.id) }
+    private fun audit(action: String, cardId: String) { val line = "${System.currentTimeMillis()}|$action|$cardId"; prefs.edit().putString("security_audit", (prefs.getString("security_audit", "") ?: "").let { if (it.isBlank()) line else "$it\n$line" }).apply() }
+    fun securityAudit(): List<String> = (prefs.getString("security_audit", "") ?: "").lines().filter { it.isNotBlank() }.asReversed()
     fun validate(payload: String): DiscountCard? {
         val p = payload.trim().split("|")
         if (p.size != 3 || p[0] != "VOICEPOS-DISCOUNT") return null
@@ -82,9 +86,11 @@ class DiscountCardStore(context: Context) {
         if (p.size != 3 || p[0] != "VOICEPOS-DISCOUNT") return null to "Invalid discount QR code"
         val all = cards()
         val card = all.firstOrNull { it.id == p[1] && it.token == p[2] } ?: return null to "Card not found on this device"
+        if (card.revoked) return card to "Card suspended by the business"
         if (card.expired) return card to "Expired on ${card.expiry.toDateLabel()}"
         if (card.exhausted) return card to "Usage limit reached"
         save(all.map { if (it.id == card.id) it.copy(uses = it.uses + 1) else it })
+        audit("CARD_REDEEMED", card.id)
         prefs.edit().putString("history", (prefs.getString("history", "") ?: "") + "${System.currentTimeMillis()}|${card.id}|${card.name.replace("|", " ")}|REDEEMED\n").apply()
         return card.copy(uses = card.uses + 1) to "Valid card redeemed successfully"
     }
@@ -119,6 +125,9 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
     var status by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<DiscountCard?>(null) }
     var historyOpen by remember { mutableStateOf(false) }
+    var auditOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showSuspended by remember { mutableStateOf(false) }
     LaunchedEffect(scannedCode) { if (scannedCode.isNotBlank()) { manualCode = scannedCode; status = "QR image scanned. Tap VALIDATE / REDEEM."; clearScannedCode() } }
     val cards = remember(tick) { store.cards().sortedByDescending { it.id } }
     Dialog(onDismissRequest = onClose) {
@@ -130,11 +139,12 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                     Text("DISCOUNT CARDS", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = onClose) { Text("CLOSE") }
                 }
-                Text("Create branded QR coupons, reward loyal customers, and track redemptions on this device.", style = MaterialTheme.typography.bodySmall)
+                Text("Manage loyalty cards, control redemptions, suspend suspicious cards and review security activity. Data is stored on this device.", style = MaterialTheme.typography.bodySmall)
                 val activeCount = cards.count { it.active }
+                val suspendedCount = cards.count { it.revoked }
                 val redeemedCount = cards.sumOf { it.uses }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf("TOTAL CARDS" to cards.size.toString(), "ACTIVE" to activeCount.toString(), "REDEEMED" to redeemedCount.toString()).forEach { (label, amount) ->
+                    listOf("TOTAL" to cards.size.toString(), "ACTIVE" to activeCount.toString(), "SUSPENDED" to suspendedCount.toString(), "REDEEMED" to redeemedCount.toString()).forEach { (label, amount) ->
                         Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                             Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(amount, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
@@ -194,7 +204,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                             Text(c.name + if (c.phone.isNotBlank()) " • ${c.phone}" else "")
                             Text("CARD NUMBER  ${c.cardNumber}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                             Text("Expiry: " + if (c.expiry == 0L) "No expiry" else c.expiry.toDateLabel())
-                            Text(if (c.maxUses == 0) "UNLIMITED REDEMPTIONS" else "LIMITED TO ${c.maxUses} USE(S)", style = MaterialTheme.typography.labelSmall)
+                            Text(if (c.revoked) "SUSPENDED — NOT REDEEMABLE" else if (c.maxUses == 0) "UNLIMITED REDEMPTIONS" else "LIMITED TO ${c.maxUses} USE(S)", style = MaterialTheme.typography.labelSmall)
                             Image(bitmap = remember(c.id) { store.qr(c.qrPayload).asImageBitmap() }, contentDescription = "Discount card QR code", modifier = Modifier.size(190.dp))
                             Text("Uses: ${c.uses}/${if (c.maxUses == 0) "∞" else c.maxUses}")
                             Button(onClick = { shareDiscountCard(context, store, c) }, modifier = Modifier.fillMaxWidth()) { Text("SHARE CARD") }
@@ -203,6 +213,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                 }
                 HorizontalDivider()
                 Text("VALIDATE / REDEEM", fontWeight = FontWeight.Bold)
+                Text("Only cards created on this device are currently verifiable. Unknown cards are never auto-approved.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 OutlinedTextField(manualCode, { manualCode = it }, label = { Text("Scan QR image or paste card QR text") }, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onScanImage, modifier = Modifier.weight(1f)) { Icon(Icons.Default.QrCodeScanner, null); Spacer(Modifier.width(5.dp)); Text("SCAN IMAGE") }
@@ -221,19 +232,23 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("SAVED CARDS (${cards.size})", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { historyOpen = !historyOpen }) { Text(if (historyOpen) "HIDE HISTORY" else "USE HISTORY") }
+                    TextButton(onClick = { historyOpen = !historyOpen }) { Text(if (historyOpen) "HIDE HISTORY" else "HISTORY") }
+                    TextButton(onClick = { auditOpen = !auditOpen }) { Text(if (auditOpen) "HIDE AUDIT" else "SECURITY") }
                 }
-                cards.forEach { c ->
+                OutlinedTextField(searchQuery, { searchQuery = it }, label = { Text("Search customer, phone or card number") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Row(verticalAlignment = Alignment.CenterVertically) { Text("Show suspended cards", modifier = Modifier.weight(1f)); Switch(checked = showSuspended, onCheckedChange = { showSuspended = it }) }
+                cards.filter { c -> (showSuspended || !c.revoked) && (searchQuery.isBlank() || c.name.contains(searchQuery, true) || c.phone.contains(searchQuery, true) || c.cardNumber.contains(searchQuery, true)) }.forEach { c ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(c.name, fontWeight = FontWeight.SemiBold)
                                 Text(c.cardNumber, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 Text("${c.discountLabel()} • ${if (c.expiry == 0L) "No expiry" else c.expiry.toDateLabel()}", style = MaterialTheme.typography.bodySmall)
-                                Text(if (c.expired) "EXPIRED" else if (c.exhausted) "LIMIT REACHED" else "ACTIVE • ${c.uses}/${if (c.maxUses == 0) "∞ unlimited" else c.maxUses}", style = MaterialTheme.typography.labelSmall)
+                                Text(if (c.revoked) "SUSPENDED" else if (c.expired) "EXPIRED" else if (c.exhausted) "LIMIT REACHED" else "ACTIVE • ${c.uses}/${if (c.maxUses == 0) "∞ unlimited" else c.maxUses}", style = MaterialTheme.typography.labelSmall)
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 TextButton(onClick = { selected = c }) { Text("VIEW") }
+                                TextButton(onClick = { store.setRevoked(c, !c.revoked); tick++; selected = store.cards().firstOrNull { it.id == c.id }; status = if (c.revoked) "Card reactivated." else "Card suspended. It cannot be redeemed." }) { Text(if (c.revoked) "REACTIVATE" else "SUSPEND") }
                                 TextButton(onClick = {
                                     editing = c; selected = c; name = c.name; phone = c.phone; type = c.type
                                     value = c.value.toString().removeSuffix(".0")
@@ -251,6 +266,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                     }
                 }
                 if (historyOpen) store.history().forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (auditOpen) { Text("SECURITY ACTIVITY", fontWeight = FontWeight.Bold); store.securityAudit().forEach { Text(it, style = MaterialTheme.typography.bodySmall) } }
             }
         }
     }
