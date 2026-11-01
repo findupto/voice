@@ -24,6 +24,7 @@ import java.util.Locale
 fun EventPlanningDialog(onClose: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("voice_event_plans", 0) }
+    val savedPlans = remember { mutableStateListOf<JSONObject>().apply { runCatching { val array = JSONArray(prefs.getString("plans", "[]")); for (i in 0 until array.length()) add(array.getJSONObject(i)) } } }
     var title by remember { mutableStateOf("") }
     var customer by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -40,6 +41,12 @@ fun EventPlanningDialog(onClose: () -> Unit) {
     }
     val total = rows.sumOf { it.second }
     val currency = remember { NumberFormat.getNumberInstance(Locale("en", "PK")) }
+    fun persistPlans() { prefs.edit().putString("plans", JSONArray().apply { savedPlans.forEach { put(it) } }.toString()).apply() }
+    fun saveDraft() {
+        if (title.isBlank()) { status = "Enter an event name before saving."; return }
+        val draft = JSONObject().apply { put("id", System.currentTimeMillis()); put("title", title); put("customer", customer); put("phone", phone); put("date", date); put("venue", venue); put("guests", guests); put("notes", notes); put("charges", charges); put("status", "DRAFT") }
+        savedPlans.add(0, draft); persistPlans(); status = "Draft saved on this device."
+    }
     fun sharePoster() {
         if (title.isBlank() || date.isBlank()) { status = "Enter event name and date first."; return }
         runCatching {
@@ -102,6 +109,23 @@ fun EventPlanningDialog(onClose: () -> Unit) {
                 Text("Estimated total: PKR ${currency.format(total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(notes, { notes = it }, label = { Text("Package details / terms / notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 Text("Quote is an estimate until management confirms the final price, availability and booking.", style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = ::saveDraft, modifier = Modifier.weight(1f)) { Text("SAVE DRAFT") }
+                    TextButton(onClick = { title = ""; customer = ""; phone = ""; date = ""; venue = ""; guests = ""; notes = ""; charges = "Venue|0\nFood & catering|0\nDecoration|0\nPhotography|0\nOther|0"; status = "New event form ready." }, modifier = Modifier.weight(1f)) { Text("NEW EVENT") }
+                }
+                if (savedPlans.isNotEmpty()) {
+                    Text("SAVED EVENT DRAFTS (" + savedPlans.size + ")", fontWeight = FontWeight.Bold)
+                    savedPlans.take(8).forEach { draft ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(draft.optString("title"), fontWeight = FontWeight.SemiBold)
+                                Text(listOf(draft.optString("customer"), draft.optString("date")).filter { it.isNotBlank() }.joinToString(" • "), style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { title = draft.optString("title"); customer = draft.optString("customer"); phone = draft.optString("phone"); date = draft.optString("date"); venue = draft.optString("venue"); guests = draft.optString("guests"); notes = draft.optString("notes"); charges = draft.optString("charges"); status = "Draft loaded." }) { Text("LOAD") }
+                            TextButton(onClick = { savedPlans.remove(draft); persistPlans(); status = "Draft deleted." }) { Text("DELETE") }
+                        }
+                    }
+                }
                 if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.secondary)
             }
         },
