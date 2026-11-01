@@ -24,7 +24,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 import java.util.zip.ZipInputStream
 
-@OptIn(androidx.camera.core.ExperimentalGetImage::class)
+@androidx.camera.core.ExperimentalGetImage
 class MainActivity : ComponentActivity() {
     private lateinit var store: Store
     private lateinit var printer: PrinterManager
@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     private val backupExportLauncher=registerForActivityResult(CreateDocument("application/json")){uri->uri?.let{contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{w->w.write(store.exportBackup())};scanStatus.value="Full business backup exported"}}
     private val backupImportLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{runCatching{val raw=contentResolver.openInputStream(uri)?.bufferedReader()?.use{r->r.readText()}?:"";store.importBackup(raw);scanStatus.value="Business data restored successfully — restart the app"}.onFailure{scanStatus.value="Backup import failed: ${it.message}"}}}
 
-    @OptIn(androidx.camera.core.ExperimentalGetImage::class)
+    @androidx.camera.core.ExperimentalGetImage
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState)
         StoreMigration.migrate(this)
