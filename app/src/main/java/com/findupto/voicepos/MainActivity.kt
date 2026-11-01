@@ -24,6 +24,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 import java.util.zip.ZipInputStream
 
+@OptIn(androidx.camera.core.ExperimentalGetImage::class)
 class MainActivity : ComponentActivity() {
     private lateinit var store: Store
     private lateinit var printer: PrinterManager
