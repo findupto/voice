@@ -34,7 +34,7 @@ import java.util.UUID
 data class DiscountCard(
     val id: String, val token: String, val name: String, val phone: String,
     val type: String, val value: Double, val expiry: Long, val maxUses: Int, val uses: Int = 0,
-    val revoked: Boolean = false, val createdAt: Long = System.currentTimeMillis()
+    val revoked: Boolean = false, val createdAt: Long = System.currentTimeMillis(), val activationFee: Double = 0.0
 ) {
     val cardNumber: String get() = "VC-" + id.replace("-", "").take(8).uppercase(Locale.US)
     val qrPayload: String get() = "VOICEPOS-DISCOUNT|$id|$token"
@@ -51,21 +51,30 @@ class DiscountCardStore(context: Context) {
         (0 until arr.length()).map { i -> arr.getJSONObject(i).let { o ->
             DiscountCard(o.getString("id"), o.getString("token"), o.optString("name"), o.optString("phone"),
                 o.optString("type", "PERCENT"), o.optDouble("value"), o.optLong("expiry"),
-                o.optInt("maxUses"), o.optInt("uses"), o.optBoolean("revoked", false), o.optLong("createdAt", 0L))
+                o.optInt("maxUses"), o.optInt("uses"), o.optBoolean("revoked", false), o.optLong("createdAt", 0L), o.optDouble("activationFee", 0.0))
         } }
     }.getOrDefault(emptyList())
     private fun save(xs: List<DiscountCard>) {
         val arr = JSONArray()
         xs.forEach { c -> arr.put(JSONObject().put("id", c.id).put("token", c.token).put("name", c.name)
             .put("phone", c.phone).put("type", c.type).put("value", c.value).put("expiry", c.expiry)
-            .put("maxUses", c.maxUses).put("uses", c.uses).put("revoked", c.revoked).put("createdAt", c.createdAt)) }
+            .put("maxUses", c.maxUses).put("uses", c.uses).put("revoked", c.revoked).put("createdAt", c.createdAt).put("activationFee", c.activationFee)) }
         prefs.edit().putString("cards", arr.toString()).apply()
     }
+    fun activationFee(): Double = prefs.getString("activation_fee", "0")?.toDoubleOrNull() ?: 0.0
+    fun setActivationFee(amount: Double) { prefs.edit().putString("activation_fee", amount.toString()).apply() }
+    private fun recordPayment(card: DiscountCard, amount: Double, kind: String) {
+        val now = System.currentTimeMillis()
+        val entry = JSONObject().put("time", now).put("cardId", card.id).put("cardNumber", card.cardNumber).put("customer", card.name).put("amount", amount).put("kind", kind)
+        val rows = JSONArray(prefs.getString("payments", "[]")); rows.put(entry)
+        prefs.edit().putString("payments", rows.toString()).apply()
+        audit("FEE_PAID_$kind", card.id)
+    }
+    fun payments(): List<JSONObject> = runCatching { val a = JSONArray(prefs.getString("payments", "[]")); (0 until a.length()).map { a.getJSONObject(it) }.sortedByDescending { it.optLong("time") } }.getOrDefault(emptyList())
     fun create(name: String, phone: String, type: String, value: Double, expiry: Long, maxUses: Int): DiscountCard {
-        val c = DiscountCard(UUID.randomUUID().toString(), UUID.randomUUID().toString().replace("-", ""),
-            name.trim(), phone.trim(), type, value, expiry, maxUses)
-        save(cards() + c)
-        return c
+        val fee = activationFee()
+        val c = DiscountCard(UUID.randomUUID().toString(), UUID.randomUUID().toString().replace("-", ""), name.trim(), phone.trim(), type, value, expiry, maxUses, activationFee = fee)
+        save(cards() + c); recordPayment(c, fee, "ACTIVATION"); return c
     }
     fun update(card: DiscountCard, name: String, phone: String, type: String, value: Double, expiry: Long, maxUses: Int): DiscountCard {
         val updated = card.copy(name = name.trim(), phone = phone.trim(), type = type, value = value, expiry = expiry, maxUses = maxUses)
@@ -73,7 +82,12 @@ class DiscountCardStore(context: Context) {
         return updated
     }
     fun remove(card: DiscountCard) { save(cards().filterNot { it.id == card.id }); audit("CARD_REMOVED", card.id) }
-    fun setRevoked(card: DiscountCard, revoked: Boolean) { save(cards().map { if (it.id == card.id) it.copy(revoked = revoked) else it }); audit(if (revoked) "CARD_SUSPENDED" else "CARD_REACTIVATED", card.id) }
+    fun setRevoked(card: DiscountCard, revoked: Boolean): Double {
+        val fee = activationFee(); val updated = card.copy(revoked = revoked)
+        save(cards().map { if (it.id == card.id) updated else it })
+        if (revoked) audit("CARD_SUSPENDED", card.id) else recordPayment(updated, fee, "REACTIVATION")
+        return fee
+    }
     private fun audit(action: String, cardId: String) { val line = "${System.currentTimeMillis()}|$action|$cardId"; prefs.edit().putString("security_audit", (prefs.getString("security_audit", "") ?: "").let { if (it.isBlank()) line else "$it\n$line" }).apply() }
     fun securityAudit(): List<String> = (prefs.getString("security_audit", "") ?: "").lines().filter { it.isNotBlank() }.asReversed()
     fun validate(payload: String): DiscountCard? {
@@ -128,6 +142,8 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
     var auditOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showSuspended by remember { mutableStateOf(false) }
+    var feeInput by remember { mutableStateOf(store.activationFee().toString().removeSuffix(".0")) }
+    var salesOpen by remember { mutableStateOf(false) }
     LaunchedEffect(scannedCode) { if (scannedCode.isNotBlank()) { manualCode = scannedCode; status = "QR image scanned. Tap VALIDATE / REDEEM."; clearScannedCode() } }
     val cards = remember(tick) { store.cards().sortedByDescending { it.id } }
     Dialog(onDismissRequest = onClose) {
@@ -153,6 +169,11 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                         }
                     }
                 }
+                HorizontalDivider()
+                Text("MANAGEMENT: CARD FEES", fontWeight = FontWeight.Bold)
+                OutlinedTextField(feeInput, { feeInput = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, label = { Text("Activation / reactivation charge (PKR)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                Button(onClick = { val fee = feeInput.toDoubleOrNull(); if (fee == null || fee < 0) status = "Enter a valid non-negative management fee." else { store.setActivationFee(fee); status = "Management fee saved. New activations and reactivations will be charged PKR ${money(fee)}." } }, modifier = Modifier.fillMaxWidth()) { Text("SAVE MANAGEMENT FEE") }
+                Text("New cards and each reactivation are charged at the current management-set fee. Suspensions are free. Editing a card does not create a charge.", style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()
                 Text(if (editing == null) "CREATE A CARD" else "EDIT DISCOUNT CARD", fontWeight = FontWeight.Bold)
                 Text("QUICK DISCOUNT PRESETS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
@@ -186,7 +207,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                         } else {
                             val current = editing
                             selected = if (current == null) store.create(name, phone, type, amount, date ?: 0L, maxUses.toInt()) else store.update(current, name, phone, type, amount, date ?: 0L, maxUses.toInt())
-                            status = if (current == null) "Discount card created and saved." else "Discount card updated."
+                            status = if (current == null) "Discount card created. Activation fee PKR ${money(store.activationFee())} recorded in today's sales." else "Discount card updated."
                             editing = null; name = ""; phone = ""; type = "PERCENT"; value = "10"; expiry = ""; maxUses = "0"; tick++
                         }
                     }, modifier = Modifier.weight(1f)) { Text(if (editing == null) "GENERATE CARD + QR" else "SAVE CHANGES") }
@@ -232,7 +253,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("SAVED CARDS (${cards.size})", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { historyOpen = !historyOpen }) { Text(if (historyOpen) "HIDE HISTORY" else "HISTORY") }
+                    TextButton(onClick = { historyOpen = !historyOpen }) { Text(if (historyOpen) "HIDE HISTORY" else "HISTORY") }; TextButton(onClick = { salesOpen = !salesOpen }) { Text(if (salesOpen) "HIDE SALES" else "DAILY SALES") }
                     TextButton(onClick = { auditOpen = !auditOpen }) { Text(if (auditOpen) "HIDE AUDIT" else "SECURITY") }
                 }
                 OutlinedTextField(searchQuery, { searchQuery = it }, label = { Text("Search customer, phone or card number") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -248,7 +269,7 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 TextButton(onClick = { selected = c }) { Text("VIEW") }
-                                TextButton(onClick = { store.setRevoked(c, !c.revoked); tick++; selected = store.cards().firstOrNull { it.id == c.id }; status = if (c.revoked) "Card reactivated." else "Card suspended. It cannot be redeemed." }) { Text(if (c.revoked) "REACTIVATE" else "SUSPEND") }
+                                TextButton(onClick = { val fee = store.setRevoked(c, !c.revoked); tick++; selected = store.cards().firstOrNull { it.id == c.id }; status = if (c.revoked) "Card reactivated. PKR ${money(fee)} reactivation fee recorded in today's sales." else "Card suspended. It cannot be redeemed." }) { Text(if (c.revoked) "REACTIVATE • PKR ${money(store.activationFee())}" else "SUSPEND") }
                                 TextButton(onClick = {
                                     editing = c; selected = c; name = c.name; phone = c.phone; type = c.type
                                     value = c.value.toString().removeSuffix(".0")
@@ -265,7 +286,18 @@ fun DiscountCardsDialog(onClose: () -> Unit, onScanImage: () -> Unit, scannedCod
                         }
                     }
                 }
+                if (salesOpen) {
+                    Text("DAILY CARD FEE SALES (PKR)", fontWeight = FontWeight.Bold)
+                    val grouped = store.payments().groupBy { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.optLong("time"))) }.toSortedMap(compareByDescending { it })
+                    grouped.forEach { (day, rows) ->
+                        Text("$day — PKR ${money(rows.sumOf { it.optDouble("amount") })}", fontWeight = FontWeight.SemiBold)
+                        rows.forEach { row -> Text("${row.optString("kind")} • ${row.optString("cardNumber")} • ${row.optString("customer")} • PKR ${money(row.optDouble("amount"))}", style = MaterialTheme.typography.bodySmall) }
+                    }
+                    if (grouped.isEmpty()) Text("No card fee payments recorded yet.", style = MaterialTheme.typography.bodySmall)
+                }
                 if (historyOpen) store.history().forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                Text("CARD RULES & REGULATIONS", fontWeight = FontWeight.Bold)
+                Text("1. Management sets the activation and reactivation fee; the current fee is charged at the time of each action.\n2. A new card becomes active only after its activation fee is recorded.\n3. A suspended card cannot be redeemed. Reactivation requires payment of the current fee.\n4. Each fee is recorded as card-fee sales on the local calendar date and time it is paid.\n5. Card discounts, expiry and usage limits remain subject to the terms shown on the card.\n6. Fees are non-refundable once the card is activated or reactivated, unless management approves an exception.\n7. Management may suspend cards suspected of misuse.\n8. Keep the payment receipt; disputes must be raised with management.", style = MaterialTheme.typography.bodySmall)
                 if (auditOpen) { Text("SECURITY ACTIVITY", fontWeight = FontWeight.Bold); store.securityAudit().forEach { Text(it, style = MaterialTheme.typography.bodySmall) } }
             }
         }
