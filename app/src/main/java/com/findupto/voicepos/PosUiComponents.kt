@@ -42,6 +42,80 @@ private fun shareText(context: android.content.Context, title: String, body: Str
         android.widget.Toast.makeText(context, "Could not share receipt image: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
     }
 }
+
+private fun shareCustomerQuotation(context: android.content.Context, order: PendingSale, profile: CompanyProfile) {
+    runCatching {
+        val items = order.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
+        val subtotal = items.sumOf { it.total }
+        val discount = cartDiscount(order.items).coerceAtMost(subtotal)
+        val net = (subtotal - discount).coerceAtLeast(0.0)
+        val service = if (profile.serviceChargeEnabled) net * profile.serviceChargeRate / 100.0 else 0.0
+        val tax = if (profile.taxEnabled) (net + service) * profile.taxRate / 100.0 else 0.0
+        val total = net + service + tax
+        val left = 76f; val right = 1004f
+        val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(35,43,56); textSize = 31f }
+        val muted = android.graphics.Paint(text).apply { color = android.graphics.Color.rgb(111,121,137); textSize = 25f }
+        val bold = android.graphics.Paint(text).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        val accent = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(83,65,160) }
+        val rule = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(225,229,236); strokeWidth = 2f }
+        val rows = items.map { it to (" " + it.qty + " × " + it.name) }
+        val details = listOf("Date: " + date(order.time), "Order type: " + order.orderType.replace('_',' '),
+            if (order.customerName.isNotBlank()) "Customer: " + order.customerName else "",
+            if (order.customerPhone.isNotBlank()) "Phone: " + order.customerPhone else "",
+            if (order.customerAddress.isNotBlank()) "Address: " + order.customerAddress else "").filter { it.isNotBlank() }
+        val height = (1050 + details.size * 48 + rows.size * 64).coerceAtMost(7000)
+        val bitmap = android.graphics.Bitmap.createBitmap(1080, height, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.rgb(246,247,251))
+        canvas.drawRoundRect(38f,38f,1042f,height-38f,34f,34f,android.graphics.Paint().apply { color=android.graphics.Color.WHITE })
+        canvas.drawRoundRect(38f,38f,1042f,330f,34f,34f,accent)
+        val brand = android.graphics.Paint(bold).apply { color=android.graphics.Color.WHITE; textSize=43f }
+        canvas.drawText(profile.name.take(34).ifBlank { "Restaurant" },left,112f,brand)
+        val header = android.graphics.Paint(muted).apply { color=android.graphics.Color.rgb(232,229,249); textSize=23f }
+        if(profile.phone.isNotBlank()) canvas.drawText(profile.phone.take(60),left,165f,header)
+        if(profile.address.isNotBlank()) canvas.drawText(profile.address.take(76),left,205f,header)
+        canvas.drawText("ORDER QUOTATION",left,280f,android.graphics.Paint(brand).apply { textSize=29f })
+        var y=390f
+        details.forEach { canvas.drawText(it.take(78),left,y,muted); y+=48f }
+        y+=26f
+        canvas.drawText("ORDER DETAILS",left,y,android.graphics.Paint(bold).apply { textSize=28f }); y+=48f
+        canvas.drawLine(left,y,right,y,rule); y+=50f
+        rows.forEach { (item,label) ->
+            val line = label.take(40)
+            canvas.drawText(line,left,y,text)
+            val price = money(item.total)
+            canvas.drawText(price,right-text.measureText(price),y,text)
+            y+=64f
+        }
+        y+=10f; canvas.drawLine(left,y,right,y,rule); y+=58f
+        fun amount(label:String,value:String,strong:Boolean=false) {
+            val p=if(strong) android.graphics.Paint(bold).apply { textSize=30f } else text
+            canvas.drawText(label,left,y,p); canvas.drawText(value,right-p.measureText(value),y,p); y+=55f
+        }
+        amount("Subtotal",money(subtotal))
+        if(discount>0.005) amount("Discount","- "+money(discount))
+        if(service>0.005) amount(profile.serviceChargeLabel.ifBlank{"Service charge"},money(service))
+        if(tax>0.005) amount(profile.taxLabel.ifBlank{"Tax"},money(tax))
+        y+=12f
+        canvas.drawRoundRect(left-18f,y-36f,right+18f,y+65f,20f,20f,android.graphics.Paint().apply { color=android.graphics.Color.rgb(242,239,252) })
+        amount("ESTIMATED TOTAL",money(total),true)
+        y+=55f
+        canvas.drawText("Quotation only — final amount is confirmed at billing.",left,y,muted)
+        y+=44f; canvas.drawText(profile.footer.take(80),left,y,muted)
+        if(profile.logoPath.isNotBlank()) runCatching {
+            val logo=android.graphics.BitmapFactory.decodeFile(profile.logoPath)
+            if(logo!=null){ val scaled=android.graphics.Bitmap.createScaledBitmap(logo,100,100,true); canvas.drawBitmap(scaled,870f,72f,null); scaled.recycle(); logo.recycle() }
+        }
+        val dir=java.io.File(context.cacheDir,"shared_receipts").apply { mkdirs() }
+        val file=java.io.File(dir,"quotation_"+order.id+".png")
+        java.io.FileOutputStream(file).use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)) }
+        bitmap.recycle()
+        val uri=androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".fileprovider",file)
+        val intent=Intent(Intent.ACTION_SEND).apply { type="image/png"; putExtra(Intent.EXTRA_SUBJECT,"Order quotation #"+order.id); putExtra(Intent.EXTRA_STREAM,uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        context.startActivity(Intent.createChooser(intent,"Share professional quotation").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure { android.widget.Toast.makeText(context,"Could not create quotation: "+it.message,android.widget.Toast.LENGTH_LONG).show() }
+}
+
 private fun kitchenShareText(order: PendingSale, profile: CompanyProfile): String = buildString {
     append(profile.name).append("\nKITCHEN ORDER #").append(order.id).append("\n")
     append("Type: ").append(order.orderType.replace('_',' ')).append("\n")
@@ -154,7 +228,7 @@ fun KitchenQueue(
                             TextButton(onClick = { pay(order) }) { Text("PAY & PRINT") }
                         }
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { shareText(context, "Share customer quotation", customerQuoteText(order, profile)) }) {
+                            OutlinedButton(onClick = { shareCustomerQuotation(context, order, profile) }) {
                                 Text("SHARE CUSTOMER QUOTE")
                             }
                             OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) {
