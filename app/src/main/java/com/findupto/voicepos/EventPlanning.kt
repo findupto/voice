@@ -86,11 +86,6 @@ fun EventPlanningDialog(onClose: () -> Unit) {
         record.put("status",status);record.put("updatedAt",System.currentTimeMillis());persist();message="Event status updated: $status"
         if(record.optLong("id")==eventId)bookingStatus=status
     }
-    fun isPast(record:JSONObject):Boolean {
-        val raw=record.optString("date")
-        val parsed=runCatching{SimpleDateFormat("yyyy-MM-dd",Locale.US).apply{isLenient=false}.parse(raw)?.time?:Long.MAX_VALUE}.getOrDefault(Long.MAX_VALUE)
-        return parsed<Long.valueOf(SimpleDateFormat("yyyyMMdd",Locale.US).format(Date())).toString().toLongOrNull()?.let{runCatching{SimpleDateFormat("yyyyMMdd",Locale.US).parse(it.toString())!!.time}.getOrNull()} ?: System.currentTimeMillis()
-    }
     val visible=savedPlans.filter { record ->
         val status=record.optString("status","DRAFT")
         when(section) {
@@ -148,9 +143,6 @@ fun EventPlanningDialog(onClose: () -> Unit) {
             }
             Text("EVENT DETAILS",fontWeight=FontWeight.Bold)
             OutlinedTextField(title,{title=it},label={Text("Event name")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                listOf("Birthday","Anniversary","Engagement","Corporate","Private Party","Other").forEach { }
-            }
             var categoryMenu by remember { mutableStateOf(false) }
             Box {
                 OutlinedButton(onClick={categoryMenu=true},modifier=Modifier.fillMaxWidth()) { Text("Category: "+category); Spacer(Modifier.weight(1f)); Text("▼") }
@@ -213,7 +205,7 @@ fun EventPlanningDialog(onClose: () -> Unit) {
                             AssistChip(onClick={load(record)},label={Text(record.optString("status","DRAFT").replace('_',' '))})
                         }
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                            Text("Total: PKR "+currency.format(runCatching{JSONArray(record.optString("charges").lines().mapNotNull{line->val p=line.split("|",limit=2);p.getOrNull(1)?.toDoubleOrNull()?:0.0}.sum()}.getOrDefault(0.0)),style=MaterialTheme.typography.bodySmall)
+                            Text("Total: PKR "+currency.format(record.optString("charges").lines().sumOf { line -> line.split("|",limit=2).getOrNull(1)?.toDoubleOrNull() ?: 0.0 }),style=MaterialTheme.typography.bodySmall)
                             Text("Paid: PKR "+currency.format(record.optDouble("paid")),style=MaterialTheme.typography.bodySmall)
                         }
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
