@@ -1,7 +1,6 @@
 package com.findupto.voicepos
 
 import android.content.Context
-import android.net.wifi.WifiManager
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -15,7 +14,6 @@ object LocalNetworkSync {
     private const val PORT = 8765
     private const val PREFS = "voice_local_network"
     @Volatile private var server: PosLanServer? = null
-    @Volatile private var appContext: Context? = null
 
     fun token(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -29,7 +27,6 @@ object LocalNetworkSync {
     @Synchronized fun start(context: Context, store: Store): Boolean {
         if (server?.isAlive == true) return true
         return runCatching {
-            appContext = context.applicationContext
             PosLanServer(store, token(context)).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false); server = it }
             true
         }.getOrDefault(false)
@@ -52,7 +49,8 @@ object LocalNetworkSync {
     fun sync(serverIp: String, accessToken: String, store: Store): String {
         val ip = serverIp.trim().removePrefix("http://").removeSuffix("/")
         require(ip.matches(Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}(:[0-9]{1,5})?"))) { "Enter the server's local IPv4 address." }
-        val connection = (URL("http://$ip:${if (ip.contains(':')) "" else PORT}/sync").openConnection() as HttpURLConnection)
+        val endpoint = if (ip.contains(":")) "http://$ip/sync" else "http://$ip:$PORT/sync"
+        val connection = (URL(endpoint).openConnection() as HttpURLConnection)
         connection.connectTimeout = 3500
         connection.readTimeout = 10000
         connection.requestMethod = "POST"
