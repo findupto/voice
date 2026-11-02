@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function member(restaurantId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+    function role(restaurantId) {
+      return get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)).data.role;
+    }
+    function owner(restaurantId) { return member(restaurantId) && role(restaurantId) == 'OWNER'; }
+    function staff(restaurantId) { return member(restaurantId) && role(restaurantId) in ['OWNER','COUNTER','WAITER','CHEF']; }
+
+    match /restaurants/{restaurantId} {
+      allow read: if staff(restaurantId);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if owner(restaurantId);
+
+      match /members/{uid} {
+        allow read: if owner(restaurantId) || (signedIn() && request.auth.uid == uid);
+        allow create: if owner(restaurantId) ||
+          (signedIn() && request.auth.uid == uid &&
+           request.resource.data.role == 'OWNER' &&
+           get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerUid == request.auth.uid);
+        allow update, delete: if owner(restaurantId);
+      }
+
+      match /orders/{orderId} {
+        allow read: if staff(restaurantId);
+        allow create: if member(restaurantId) && role(restaurantId) in ['OWNER','WAITER','COUNTER'];
+        allow update: if member(restaurantId) &&
+          (role(restaurantId) in ['OWNER','COUNTER'] ||
+           (role(restaurantId) == 'CHEF' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','kitchenNote','updatedAt'])));
+        allow delete: if owner(restaurantId);
+      }
+      match /sales/{saleId} {
+        allow read: if staff(restaurantId);
+        allow create, update: if member(restaurantId) && role(restaurantId) in ['OWNER','COUNTER'];
+        allow delete: if owner(restaurantId);
+      }
+      match /payments/{paymentId} {
+        allow read: if staff(restaurantId);
+        allow create: if member(restaurantId) && role(restaurantId) in ['OWNER','COUNTER'];
+        allow update, delete: if owner(restaurantId);
+      }
+      match /menu/{itemId} {
+        allow read: if staff(restaurantId);
+        allow create, update, delete: if owner(restaurantId);
+      }
+      match /expenses/{expenseId} {
+        allow read: if staff(restaurantId);
+        allow create, update: if member(restaurantId) && role(restaurantId) in ['OWNER','COUNTER'];
+        allow delete: if owner(restaurantId);
+      }
+      match /events/{eventId} {
+        allow read: if staff(restaurantId);
+        allow create, update: if member(restaurantId) && role(restaurantId) in ['OWNER','COUNTER'];
+        allow delete: if owner(restaurantId);
+      }
+      match /backups/{backupId} {
+        allow read, write: if owner(restaurantId);
+      }
+    }
+  }
+}
