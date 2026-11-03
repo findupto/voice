@@ -62,7 +62,7 @@ object LocalNetworkSync {
   val result=ArrayList<PendingSale>()
   for(i in 0 until a.length()){
    val x=a.getJSONObject(i);val items=x.getJSONArray("items")
-   val lines=(0 until items.length()).map{val q=items.getJSONObject(it);SaleItem(q.getString("name"),q.getInt("qty"),q.getDouble("price"))}
+   val lines=(0 until items.length()).map{val q=items.getJSONObject(it);SaleItem(q.getString("name"),q.getInt("qty"),q.getDouble("price"),q.optString("kitchen","FAST_FOOD"))}
    val order=PendingSale(x.getLong("id"),lines,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L))
    store.upsertRemoteOrder(order);result.add(order)
   }
@@ -75,7 +75,7 @@ object LocalNetworkSync {
  fun setupOwner(ip:String,ownerCode:String,name:String,pin:String):String=request(ip,ownerCode,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role","OWNER").toString(),true)
  private fun orderJson(s:PendingSale)=JSONObject().apply{
   put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt)
-  put("items",JSONArray().apply{s.items.forEach{put(JSONObject().put("name",it.name).put("qty",it.qty).put("price",it.price))}})
+  put("items",JSONArray().apply{s.items.forEach{put(JSONObject().put("name",it.name).put("qty",it.qty).put("price",it.price).put("kitchen",it.kitchen))}})
  }
  private data class StaffSession(val name:String,val role:String,val expiresAt:Long)
  private class PosLanServer(private val context:Context,private val store:Store,private val secret:String):NanoHTTPD("0.0.0.0",PORT){
@@ -133,7 +133,7 @@ object LocalNetworkSync {
       require(staffSession(session)?.role in setOf("WAITER","OWNER","ADMIN")){"Only a waiter can submit orders"}
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
       require(a.length() in 1..100) { "An order must contain 1 to 100 item lines" }
-      val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price)}
+      val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price,q.optString("kitchen","FAST_FOOD").also{station->require(station in setOf("FAST_FOOD","GRILLED","MILK_SHAKES","TEA_COFFEE")){"Invalid kitchen station"}})}
       val id=x.getLong("id");val time=x.getLong("time")
       require(id>0L&&time>0L&&time<=System.currentTimeMillis()+300_000L){"Invalid order identity or timestamp"}
       val orderType=x.optString("orderType","DINE_IN").uppercase()
