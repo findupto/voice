@@ -29,7 +29,13 @@ object LocalNetworkSync {
  }
  @Synchronized fun stop(){server?.stop();server=null}
  fun isRunning()=server?.isAlive==true
- fun ipAddress():String=runCatching{Collections.list(NetworkInterface.getNetworkInterfaces()).asSequence().filter{it.isUp&&!it.isLoopback}.flatMap{Collections.list(it.inetAddresses).asSequence()}.filterIsInstance<Inet4Address>().firstOrNull{it.isSiteLocalAddress}?.hostAddress?:"IP unavailable"}.getOrDefault("IP unavailable")
+ fun ipAddress():String=runCatching{
+  val interfaces=Collections.list(NetworkInterface.getNetworkInterfaces()).filter{it.isUp&&!it.isLoopback}
+  val ordered=interfaces.sortedBy{n->when{n.name.startsWith("wlan",true)->0;n.name.startsWith("ap",true)->1;n.name.startsWith("eth",true)->2;else->3}}
+  ordered.asSequence().flatMap{Collections.list(it.inetAddresses).asSequence()}.filterIsInstance<Inet4Address>().firstOrNull{it.isSiteLocalAddress}?.hostAddress?:"IP unavailable"
+ }.getOrDefault("IP unavailable")
+ fun testConnection(ip:String):String=request(ip,"","/health")
+
  private fun endpoint(ip:String,path:String):String {
   val host=ip.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
   val address=host.substringBefore(":")
@@ -41,7 +47,7 @@ object LocalNetworkSync {
  private fun request(ip:String,token:String,path:String,method:String="GET",body:String?=null,ownerCode:Boolean=false):String {
   val c=URL(endpoint(ip,path)).openConnection() as HttpURLConnection
   try {
-   c.connectTimeout=2500;c.readTimeout=5000;c.requestMethod=method
+   c.connectTimeout=7000;c.readTimeout=10000;c.requestMethod=method
    c.setRequestProperty(if(ownerCode) "X-POS-Token" else "X-POS-Session",token.trim())
    c.setRequestProperty("Accept","application/json")
    if(body!=null){val bytes=body.toByteArray(Charsets.UTF_8);c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setFixedLengthStreamingMode(bytes.size);c.outputStream.use{it.write(bytes)}}
