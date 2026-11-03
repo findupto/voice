@@ -19,8 +19,8 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  val context=LocalContext.current
  val prefs=context.getSharedPreferences("voice_local_network",0)
  val scope=rememberCoroutineScope()
- var ip by remember{mutableStateOf(prefs.getString("owner_ip","")?: "")}
- var ownerCode by remember{mutableStateOf(prefs.getString("access_token","")?: "")}
+ var ip by remember{mutableStateOf(prefs.getString("owner_ip","")?.takeIf{it.isNotBlank()}?:if(LocalNetworkSync.isRunning())"127.0.0.1" else "")}
+ var ownerCode by remember{mutableStateOf(LocalNetworkSync.token(context))}
  var name by remember{mutableStateOf(store.staffName())}
  var pin by remember{mutableStateOf("")}
  var role by remember{mutableStateOf("WAITER")}
@@ -40,7 +40,8 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  }
  AlertDialog(onDismissRequest=onClose,title={Text("STAFF ACCESS",fontWeight=FontWeight.Bold)},
   text={Column(verticalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.fillMaxWidth()){
-   OutlinedTextField(ip,{ip=it.trim();prefs.edit().putString("owner_ip",it.trim()).apply()},label={Text("Owner phone IP address")},placeholder={Text("192.168.1.10")},singleLine=true,modifier=Modifier.fillMaxWidth())
+   OutlinedTextField(ip,{ip=it.trim();prefs.edit().putString("owner_ip",it.trim()).apply()},label={Text("Owner phone address")},placeholder={Text(if(LocalNetworkSync.isRunning())"127.0.0.1 (this phone)" else "192.168.1.10:8765")},singleLine=true,modifier=Modifier.fillMaxWidth())
+   OutlinedButton(enabled=!busy&&ip.isNotBlank(),onClick={runTask({LocalNetworkSync.testConnection(ip);"Owner phone reached successfully. Server is responding."})},modifier=Modifier.fillMaxWidth()){Text("TEST OWNER CONNECTION")}
    if(mode=="SIGN_IN"){
     OutlinedTextField(name,{name=it},label={Text("Your staff name")},singleLine=true,modifier=Modifier.fillMaxWidth())
     OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("Your 4–8 digit PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
@@ -52,7 +53,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
       "Welcome, ${result.getString("name")}."
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
-    TextButton(enabled=!busy,onClick={mode="OWNER_SETUP";message="Start the main server on the owner's phone. Copy its Access code from Local Network."}){Text("FIRST TIME? SET UP OWNER")}
+    TextButton(enabled=!busy,onClick={mode="OWNER_SETUP";message="On the owner phone, open Network → Start Main Server. If creating the owner on that same phone, use 127.0.0.1. On another phone, enter the owner phone address shown on its Network screen."}){Text("FIRST TIME? SET UP OWNER")}
     if(currentRole=="OWNER"&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER: CREATE STAFF ACCOUNT")}
    }else if(mode=="OWNER_SETUP"){
     Text("OWNER SETUP",fontWeight=FontWeight.Bold)
@@ -79,7 +80,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
     TextButton(onClick={mode="SIGN_IN"}){Text("BACK")}
    }
    Text(message,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.secondary)
-   if(session.isNotBlank())Text("This device: ${store.staffName()} • ${store.staffRole()}",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium)
+   if(session.isNotBlank())Text("Signed in: ${store.staffName()} • ${store.staffRole()}",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium)
   }},
   confirmButton={TextButton(onClick=onClose){Text("CLOSE")}}
  )
