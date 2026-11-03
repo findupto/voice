@@ -82,7 +82,7 @@ object LocalNetworkSync {
       val x=JSONObject(readBody(session));val ok=store.updateOrderWorkflow(x.getLong("id"),x.getString("status"),x.optString("actor"),x.optString("role"),x.optString("note"))
       if(!ok)json(Response.Status.NOT_FOUND,JSONObject().put("error","Order not found"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
-     session.uri=="/sync"&&session.method==Method.POST -> json(Response.Status.OK,JSONObject().put("backup",store.mergeBackup(readBody(session))))
+     session.uri=="/sync"&&session.method==Method.POST -> newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session)))
      else -> json(Response.Status.NOT_FOUND,JSONObject().put("error","Not found"))
     }
    }catch(e:Exception){json(Response.Status.BAD_REQUEST,JSONObject().put("error",e.message?:"Request failed"))}
