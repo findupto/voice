@@ -120,7 +120,7 @@ object LocalNetworkSync {
       require(firstSetup||isOwner(session)){"Only the owner can manage staff accounts"}
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
-      require(role in setOf("OWNER","COUNTER","WAITER","CHEF")){"Invalid staff role"}
+      require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
       if(firstSetup)require(role=="OWNER"){"First account must be OWNER"}
       val a=accounts();val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
       val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
@@ -130,7 +130,7 @@ object LocalNetworkSync {
      }
      session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
      session.uri=="/orders"&&session.method==Method.POST -> {
-      require(staffSession(session)?.role in setOf("WAITER","OWNER")){"Only a waiter can submit orders"}
+      require(staffSession(session)?.role in setOf("WAITER","OWNER","ADMIN")){"Only a waiter can submit orders"}
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
       require(a.length() in 1..100) { "An order must contain 1 to 100 item lines" }
       val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price)}
@@ -149,7 +149,7 @@ object LocalNetworkSync {
       val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
       val role=authenticated.role;val actor=authenticated.name
       val id=x.getLong("id");val status=x.getString("status").uppercase()
-      require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED")){"Invalid order update"}
+      require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED","OUT_FOR_DELIVERY","DELIVERED")){"Invalid order update"}
       val ok=store.updateOrderWorkflow(id,status,actor,role,x.optString("note").take(1000))
       if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Order is missing or the requested workflow transition is not allowed"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
