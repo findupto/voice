@@ -40,6 +40,7 @@ class Store(private val context:Context){
  }
  @Synchronized fun updateOrderWorkflow(id:Long, status:String, actor:String, role:String, note:String="", table:String?=null):Boolean {
   val order=pending().firstOrNull{it.id==id}?:return false
+  if(order.status==status)return true
   val allowed=when(order.status){
    "NEW"->setOf("ACCEPTED","PREPARING")
    "ACCEPTED"->setOf("PREPARING")
