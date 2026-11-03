@@ -20,10 +20,9 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
  var code by remember{mutableStateOf(LocalNetworkSync.token(ctx))}
  var orders by remember{mutableStateOf(store.pending())}
  var message by remember{mutableStateOf("Enter the owner phone IP and access code.")}
- var refresh by remember{mutableIntStateOf(0)}
  val role=store.staffRole();val actor=store.staffName().ifBlank{"Staff"};val scope=rememberCoroutineScope()
  fun update(o:PendingSale,status:String){scope.launch{runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pushStatus(ip,code,o.id,status,actor,role);LocalNetworkSync.pullOrders(ip,code,store)}}.onSuccess{orders=it;message="Order updated."}.onFailure{message=it.message?:"Update failed"};onChanged()}}
- LaunchedEffect(ip,code,refresh){while(true){if(ip.isNotBlank()&&code.isNotBlank()){runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pullOrders(ip,code,store)}}.onSuccess{orders=it;message="Connected • live refresh every 4 seconds"}.onFailure{message=it.message?: "Connection failed"}};delay(4000)}}
+ LaunchedEffect(ip,code){while(true){if(ip.isNotBlank()&&code.isNotBlank()){runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pullOrders(ip,code,store)}}.onSuccess{orders=it;message="Connected • live refresh every 4 seconds"}.onFailure{message=it.message?: "Connection failed"}};delay(4000)}}
  AlertDialog(onDismissRequest=onClose,title={Text("LIVE ORDERS • ${role}",fontWeight=FontWeight.Bold)},
  text={Column(Modifier.fillMaxWidth().heightIn(max=540.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   OutlinedTextField(ip,{ip=it;ctx.getSharedPreferences("voice_local_network",0).edit().putString("owner_ip",it).apply()},label={Text("Owner phone IP")},singleLine=true)
