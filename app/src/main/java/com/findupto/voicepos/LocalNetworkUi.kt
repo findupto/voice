@@ -54,8 +54,8 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                 }
                 HorizontalDivider()
                 Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)
-                OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("Owner phone IP address") }, placeholder = { Text("192.168.1.10") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Owner access code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = ip, onValueChange = { ip = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_ip", it).apply() }, label = { Text("Owner phone IP address") }, placeholder = { Text("192.168.1.10") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Owner access code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = {
                     if (ip.isBlank() || code.isBlank()) {
                         message = "Enter the owner's IP address and access code."
