@@ -98,7 +98,20 @@ class Store(private val context:Context){
    current.put(name,merged)
   }
   mergeArray("sales"){it.optString("id")}
-  mergeArray("pending"){it.optString("id")}
+  // Keep the newest version of each live order; the older first-wins merge
+  // silently discarded waiter notes and kitchen status changes during sync.
+  run {
+   val byId=linkedMapOf<String,org.json.JSONObject>()
+   val old=current.optJSONArray("pending")?:org.json.JSONArray()
+   val fresh=incoming.optJSONArray("pending")?:org.json.JSONArray()
+   for(source in listOf(old,fresh)) for(i in 0 until source.length()) {
+    val item=source.optJSONObject(i)?:continue
+    val key=item.optString("id")
+    val previous=byId[key]
+    if(previous==null||item.optLong("updatedAt",item.optLong("time"))>previous.optLong("updatedAt",previous.optLong("time")))byId[key]=item
+   }
+   current.put("pending",org.json.JSONArray().apply{byId.values.forEach{put(it)}})
+  }
   mergeArray("expenses"){it.optString("id")+":"+it.optString("time")+":"+it.optString("title")}
   mergeArray("shifts"){it.optString("id")}
   mergeArray("dues"){it.optString("id")+":"+it.optString("saleId")}
