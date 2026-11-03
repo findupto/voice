@@ -70,7 +70,7 @@ object LocalNetworkSync {
    if(session.headers["x-pos-token"]!=secret)return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
    return try {
     when {
-     session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(orderJson(it))}})
+     session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
      session.uri=="/orders"&&session.method==Method.POST -> {
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
       val items=(0 until a.length()).map{val q=a.getJSONObject(it);SaleItem(q.getString("name"),q.getInt("qty"),q.getDouble("price"))}
