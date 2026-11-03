@@ -18,7 +18,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
    OutlinedTextField(value=name,onValueChange={name=it},label={Text("Staff name")},singleLine=true,modifier=Modifier.fillMaxWidth())
    roles.forEach{r->FilterChip(selected=role==r,onClick={role=r},label={Text(r)})}
   }},
-  confirmButton={Button(onClick={ {if(name.isNotBlank()){store.setStaffSession(name,role);onSaved()}} },enabled=name.isNotBlank()){Text("SAVE ROLE")}},
+  confirmButton={Button(onClick={if(name.isNotBlank()){store.setStaffSession(name,role);onSaved()}},enabled=name.isNotBlank()){Text("SAVE ROLE")}},
   dismissButton={TextButton(onClick=onClose){Text("CANCEL")}}
  )
 }
