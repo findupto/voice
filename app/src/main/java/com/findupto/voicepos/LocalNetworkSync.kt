@@ -8,6 +8,7 @@ import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URL
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Collections
 
@@ -67,27 +68,45 @@ object LocalNetworkSync {
  private class PosLanServer(private val store:Store,private val secret:String):NanoHTTPD("0.0.0.0",PORT){
   override fun serve(session:IHTTPSession):Response {
    if(session.uri=="/health"&&session.method==Method.GET)return json(Response.Status.OK,JSONObject().put("service","Voice POS live orders").put("version",2))
-   if(session.headers["x-pos-token"]!=secret)return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
+   val supplied=session.headers["x-pos-token"].orEmpty()
+   if(!MessageDigest.isEqual(supplied.toByteArray(Charsets.UTF_8),secret.toByteArray(Charsets.UTF_8)))
+    return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
+   val declaredLength=session.headers["content-length"]?.toLongOrNull()?:0L
+   if(declaredLength>1_000_000L)return json(Response.Status.BAD_REQUEST,JSONObject().put("error","Request is too large"))
    return try {
     when {
      session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
      session.uri=="/orders"&&session.method==Method.POST -> {
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
-      val items=(0 until a.length()).map{val q=a.getJSONObject(it);SaleItem(q.getString("name"),q.getInt("qty"),q.getDouble("price"))}
-      val order=PendingSale(x.getLong("id"),items,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L))
-      store.upsertRemoteOrder(order);store.appendOrderAudit(order.id,order.waiterName.ifBlank{order.shiftPerson},"WAITER","ORDER_SENT","Order received by owner device")
+      require(a.length() in 1..100) { "An order must contain 1 to 100 item lines" }
+      val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price)}
+      val id=x.getLong("id");val time=x.getLong("time")
+      require(id>0L&&time>0L){"Invalid order identity"}
+      val incoming=PendingSale(id,items,time,x.optString("customerName").take(120),x.optString("customerPhone").take(40),x.optString("orderType","DINE_IN"),x.optString("customerAddress").take(300),x.optString("shiftPerson").take(80),x.optString("tableName").take(40),x.optString("waiterName").take(80),x.optString("counterName").take(80),x.optString("chefName").take(80),"NEW",x.optString("specialInstructions").take(1000),x.optLong("updatedAt",time).coerceAtLeast(time),0L)
+      val existing=store.pending().firstOrNull{it.id==id}
+      val order=if(existing==null)incoming else incoming.copy(status=existing.status,waiterName=existing.waiterName,chefName=existing.chefName,counterName=existing.counterName,servedAt=existing.servedAt)
+      store.upsertRemoteOrder(order)
+      if(existing==null)store.appendOrderAudit(order.id,order.waiterName.ifBlank{order.shiftPerson},"WAITER","ORDER_SENT","Order received by owner device")
       json(Response.Status.OK,JSONObject().put("ok",true).put("id",order.id))
      }
      session.uri=="/orders/status"&&session.method==Method.POST -> {
-      val x=JSONObject(readBody(session));val ok=store.updateOrderWorkflow(x.getLong("id"),x.getString("status"),x.optString("actor"),x.optString("role"),x.optString("note"))
-      if(!ok)json(Response.Status.NOT_FOUND,JSONObject().put("error","Order not found"))else json(Response.Status.OK,JSONObject().put("ok",true))
+      val x=JSONObject(readBody(session));val role=x.optString("role").uppercase();val actor=x.optString("actor").trim()
+      require(role in setOf("OWNER","COUNTER","WAITER","CHEF")){"Invalid staff role"}
+      require(actor.isNotBlank()&&actor.length<=80){"Staff name is required"}
+      val ok=store.updateOrderWorkflow(x.getLong("id"),x.getString("status"),actor,role,x.optString("note").take(1000))
+      if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Order is missing or the requested workflow transition is not allowed"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/sync"&&session.method==Method.POST -> newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session)))
      else -> json(Response.Status.NOT_FOUND,JSONObject().put("error","Not found"))
     }
    }catch(e:Exception){json(Response.Status.BAD_REQUEST,JSONObject().put("error",e.message?:"Request failed"))}
   }
-  private fun readBody(s:IHTTPSession):String{val files=HashMap<String,String>();s.parseBody(files);return files["postData"]?:throw IllegalArgumentException("Empty request")}
+  private fun readBody(s:IHTTPSession):String{
+   val length=s.headers["content-length"]?.toLongOrNull()?:0L
+   require(length in 1..1_000_000L){"Request body must be between 1 byte and 1 MB"}
+   val files=HashMap<String,String>();s.parseBody(files)
+   return (files["postData"]?:throw IllegalArgumentException("Empty request")).also{require(it.toByteArray(Charsets.UTF_8).size<=1_000_000){"Request is too large"}}
+  }
   private fun json(status:Response.Status,value:JSONObject)=newFixedLengthResponse(status,"application/json; charset=utf-8",value.toString())
   private fun json(status:Response.Status,value:JSONArray)=newFixedLengthResponse(status,"application/json; charset=utf-8",value.toString())
  }
