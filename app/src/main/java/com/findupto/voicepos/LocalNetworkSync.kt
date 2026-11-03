@@ -70,7 +70,7 @@ object LocalNetworkSync {
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
  fun pushStatus(ip:String,token:String,id:Long,status:String,actor:String,role:String,note:String=""):String=request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).put("note",note).toString())
- fun loginStaff(ip:String,ownerCode:String,name:String,pin:String):JSONObject=JSONObject(request(ip,ownerCode,"/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
+ fun loginStaff(ip:String,name:String,pin:String):JSONObject=JSONObject(request(ip,"","/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
  fun enrollStaff(ip:String,ownerSession:String,name:String,pin:String,role:String):String=request(ip,ownerSession,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role",role).toString())
  fun setupOwner(ip:String,ownerCode:String,name:String,pin:String):String=request(ip,ownerCode,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role","OWNER").toString(),true)
  private fun orderJson(s:PendingSale)=JSONObject().apply{
@@ -98,9 +98,9 @@ object LocalNetworkSync {
    val supplied=session.headers["x-pos-token"].orEmpty()
    val firstSetup=session.uri=="/staff/enroll"&&session.method==Method.POST&&accounts().length()==0
    val login=session.uri=="/staff/login"&&session.method==Method.POST
-   if(login||firstSetup){
+   if(firstSetup){
     if(!MessageDigest.isEqual(supplied.toByteArray(Charsets.UTF_8),secret.toByteArray(Charsets.UTF_8)))return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
-   } else if(staffSession(session)==null)return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Staff sign-in required"))
+   } else if(!login&&staffSession(session)==null)return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Staff sign-in required"))
    val declaredLength=session.headers["content-length"]?.toLongOrNull()?:0L
    if(declaredLength>8_000_000L)return json(Response.Status.BAD_REQUEST,JSONObject().put("error","Request is too large"))
    return try {
