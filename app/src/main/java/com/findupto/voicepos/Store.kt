@@ -44,16 +44,18 @@ class Store(private val context:Context){
    "NEW"->setOf("ACCEPTED","PREPARING")
    "ACCEPTED"->setOf("PREPARING")
    "PREPARING"->setOf("READY")
-   "READY"->setOf("SERVED")
+   "READY"->setOf("SERVED","OUT_FOR_DELIVERY")
+   "OUT_FOR_DELIVERY"->setOf("DELIVERED")
    else->emptySet()
   }
   if(status !in allowed)return false
-  if((status=="PREPARING"||status=="READY")&&role!="CHEF"&&role!="OWNER")return false
-  if(status=="SERVED"&&role!="WAITER"&&role!="OWNER")return false
-  if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER")return false
+  if((status=="PREPARING"||status=="READY")&&role!="CHEF"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="SERVED"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status in setOf("OUT_FOR_DELIVERY","DELIVERED")&&role!="RIDER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
   val now=System.currentTimeMillis()
   val updated=order.copy(status=status,updatedAt=now,servedAt=if(status=="SERVED")now else order.servedAt,
-   chefName=if(role=="CHEF")actor else order.chefName,
+   chefName=if(role=="CHEF"||role=="DISHWASHER")actor else order.chefName,
    counterName=if(role=="COUNTER")actor else order.counterName,
    waiterName=if(role=="WAITER")actor else order.waiterName,
    specialInstructions=if(note.isBlank())order.specialInstructions else note,
