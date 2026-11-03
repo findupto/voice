@@ -29,19 +29,25 @@ object LocalNetworkSync {
  fun ipAddress():String=runCatching{Collections.list(NetworkInterface.getNetworkInterfaces()).asSequence().filter{it.isUp&&!it.isLoopback}.flatMap{Collections.list(it.inetAddresses).asSequence()}.filterIsInstance<Inet4Address>().firstOrNull{it.isSiteLocalAddress}?.hostAddress?:"IP unavailable"}.getOrDefault("IP unavailable")
  private fun endpoint(ip:String,path:String):String {
   val host=ip.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
-  require(host.matches(Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}(:[0-9]{1,5})?"))){"Enter the owner's local IPv4 address."}
-  return "http://"+(if(host.contains(":"))host else "$host:$PORT")+path
+  val address=host.substringBefore(":")
+  require(address.split(".").size==4&&address.split(".").all{it.toIntOrNull() in 0..255}){"Enter a valid owner IPv4 address."}
+  val port=host.substringAfter(":",PORT.toString()).toIntOrNull()
+  require(port!=null&&port in 1..65535){"Enter a valid local port."}
+  return "http://$address:$port$path
  }
  private fun request(ip:String,token:String,path:String,method:String="GET",body:String?=null):String {
   val c=URL(endpoint(ip,path)).openConnection() as HttpURLConnection
-  c.connectTimeout=3500;c.readTimeout=7000;c.requestMethod=method
-  c.setRequestProperty("X-POS-Token",token.trim())
-  if(body!=null){c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}}
-  val status=c.responseCode
-  val response=(if(status in 200..299)c.inputStream else c.errorStream)?.bufferedReader()?.use{it.readText()}.orEmpty()
-  c.disconnect()
-  if(status !in 200..299)throw IllegalStateException(JSONObject(response).optString("error","Server rejected request ($status)"))
-  return response
+  try {
+   c.connectTimeout=2500;c.readTimeout=5000;c.requestMethod=method
+   c.setRequestProperty("X-POS-Token",token.trim())
+   c.setRequestProperty("Accept","application/json")
+   if(body!=null){val bytes=body.toByteArray(Charsets.UTF_8);c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setFixedLengthStreamingMode(bytes.size);c.outputStream.use{it.write(bytes)}}
+   val status=c.responseCode
+   val stream=if(status in 200..299)c.inputStream else c.errorStream
+   val response=stream?.bufferedReader()?.use{it.readText()}?.take(8_000_000).orEmpty()
+   if(status !in 200..299)throw IllegalStateException(runCatching{JSONObject(response).optString("error")}.getOrNull()?.takeIf{it.isNotBlank()}?:"Server rejected request ($status)")
+   return response
+  } finally { c.disconnect() }
  }
  fun sync(serverIp:String,accessToken:String,store:Store):String {
   val response=request(serverIp,accessToken,"/sync","POST",store.exportBackup())
@@ -81,8 +87,10 @@ object LocalNetworkSync {
       require(a.length() in 1..100) { "An order must contain 1 to 100 item lines" }
       val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price)}
       val id=x.getLong("id");val time=x.getLong("time")
-      require(id>0L&&time>0L){"Invalid order identity"}
-      val incoming=PendingSale(id,items,time,x.optString("customerName").take(120),x.optString("customerPhone").take(40),x.optString("orderType","DINE_IN"),x.optString("customerAddress").take(300),x.optString("shiftPerson").take(80),x.optString("tableName").take(40),x.optString("waiterName").take(80),x.optString("counterName").take(80),x.optString("chefName").take(80),"NEW",x.optString("specialInstructions").take(1000),x.optLong("updatedAt",time).coerceAtLeast(time),0L)
+      require(id>0L&&time>0L&&time<=System.currentTimeMillis()+300_000L){"Invalid order identity or timestamp"}
+      val orderType=x.optString("orderType","DINE_IN").uppercase()
+      require(orderType in setOf("DINE_IN","TAKEAWAY","DELIVERY")){"Invalid order type"}
+      val incoming=PendingSale(id,items,time,x.optString("customerName").take(120),x.optString("customerPhone").take(40),orderType,x.optString("customerAddress").take(300),x.optString("shiftPerson").take(80),x.optString("tableName").take(40),x.optString("waiterName").take(80),x.optString("counterName").take(80),x.optString("chefName").take(80),"NEW",x.optString("specialInstructions").take(1000),x.optLong("updatedAt",time).coerceAtLeast(time),0L)
       val existing=store.pending().firstOrNull{it.id==id}
       val order=if(existing==null)incoming else incoming.copy(status=existing.status,waiterName=existing.waiterName,chefName=existing.chefName,counterName=existing.counterName,servedAt=existing.servedAt)
       store.upsertRemoteOrder(order)
@@ -93,7 +101,9 @@ object LocalNetworkSync {
       val x=JSONObject(readBody(session));val role=x.optString("role").uppercase();val actor=x.optString("actor").trim()
       require(role in setOf("OWNER","COUNTER","WAITER","CHEF")){"Invalid staff role"}
       require(actor.isNotBlank()&&actor.length<=80){"Staff name is required"}
-      val ok=store.updateOrderWorkflow(x.getLong("id"),x.getString("status"),actor,role,x.optString("note").take(1000))
+      val id=x.getLong("id");val status=x.getString("status").uppercase()
+      require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED")){"Invalid order update"}
+      val ok=store.updateOrderWorkflow(id,status,actor,role,x.optString("note").take(1000))
       if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Order is missing or the requested workflow transition is not allowed"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/sync"&&session.method==Method.POST -> newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session,8_000_000L)))
