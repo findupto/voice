@@ -101,9 +101,9 @@ object LocalNetworkSync {
     }
    }catch(e:Exception){json(Response.Status.BAD_REQUEST,JSONObject().put("error",e.message?:"Request failed"))}
   }
-  private fun readBody(s:IHTTPSession):String{
+  private fun readBody(s:IHTTPSession,maxBytes:Long=1_000_000L):String{
    val length=s.headers["content-length"]?.toLongOrNull()?:0L
-   require(length in 1..1_000_000L){"Request body must be between 1 byte and 1 MB"}
+   require(length in 1..maxBytes){"Request body exceeds the allowed size"}
    val files=HashMap<String,String>();s.parseBody(files)
    return (files["postData"]?:throw IllegalArgumentException("Empty request")).also{require(it.toByteArray(Charsets.UTF_8).size<=maxBytes){"Request is too large"}}
   }
