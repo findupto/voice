@@ -49,7 +49,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
   confirmButton={Column(horizontalAlignment=androidx.compose.ui.Alignment.End){
    Button(enabled=!busy&&ip.isNotBlank()&&ownerCode.isNotBlank()&&name.isNotBlank()&&pin.length in 4..8,onClick={
     runTask({
-     val result=LocalNetworkSync.loginStaff(ip,ownerCode,name,pin)
+     val result=LocalNetworkSync.loginStaff(ip,name,pin)
      prefs.edit().putString("staff_session",result.getString("session")).apply()
      store.setStaffSession(result.getString("name"),result.getString("role"))
      "Signed in as ${result.getString("name")} • ${result.getString("role")}"
