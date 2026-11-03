@@ -47,7 +47,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
    Text(message,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.secondary)
   }},
   confirmButton={Column(horizontalAlignment=androidx.compose.ui.Alignment.End){
-   Button(enabled=!busy&&ip.isNotBlank()&&ownerCode.isNotBlank()&&name.isNotBlank()&&pin.length in 4..8,onClick={
+   Button(enabled=!busy&&ip.isNotBlank()&&name.isNotBlank()&&pin.length in 4..8,onClick={
     runTask({
      val result=LocalNetworkSync.loginStaff(ip,name,pin)
      prefs.edit().putString("staff_session",result.getString("session")).apply()
