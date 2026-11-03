@@ -15,7 +15,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
     val context = LocalContext.current
     var hosting by remember { mutableStateOf(LocalNetworkSync.isRunning()) }
     var ip by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf(context.getSharedPreferences("voice_local_network",0).getString("staff_session","") ?: "") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("No internet or cloud account is required.") }
     val localIp = remember(hosting) { LocalNetworkSync.ipAddress() }
@@ -55,7 +55,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                 HorizontalDivider()
                 Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)
                 OutlinedTextField(value = ip, onValueChange = { ip = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_ip", it).apply() }, label = { Text("Owner phone IP address") }, placeholder = { Text("192.168.1.10") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Owner access code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Staff session token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = {
                     if (ip.isBlank() || code.isBlank()) {
                         message = "Enter the owner's IP address and access code."
