@@ -26,7 +26,7 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
  AlertDialog(onDismissRequest=onClose,title={Text("LIVE ORDERS • ${role}",fontWeight=FontWeight.Bold)},
  text={Column(Modifier.fillMaxWidth().heightIn(max=540.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   OutlinedTextField(ip,{ip=it;ctx.getSharedPreferences("voice_local_network",0).edit().putString("owner_ip",it).apply()},label={Text("Owner phone IP")},singleLine=true)
-  OutlinedTextField(code,{code=it},label={Text("Access code")},singleLine=true)
+  OutlinedTextField(code,{code=it;ctx.getSharedPreferences("voice_local_network",0).edit().putString("owner_token",it).apply()},label={Text("Access code")},singleLine=true)
   Text(message,style=MaterialTheme.typography.bodySmall)
   HorizontalDivider()
   LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)){
