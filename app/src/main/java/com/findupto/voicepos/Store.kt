@@ -32,9 +32,25 @@ class Store(private val context:Context){
  fun pending()=p.getString("pending","")!!.lines().filter{it.isNotBlank()}.mapNotNull{runCatching{val a=it.split("~");PendingSale(a[0].toLong(),di(a[1]),a[2].toLong(),dec(a.getOrNull(3).orEmpty()),dec(a.getOrNull(4).orEmpty()),a.getOrNull(5)?:"DINE_IN",dec(a.getOrNull(6).orEmpty()),dec(a.getOrNull(7).orEmpty()),dec(a.getOrNull(8).orEmpty()),dec(a.getOrNull(9).orEmpty()),dec(a.getOrNull(10).orEmpty()),dec(a.getOrNull(11).orEmpty()),a.getOrNull(12)?:"NEW",dec(a.getOrNull(13).orEmpty()),a.getOrNull(14)?.toLongOrNull()?:a[2].toLong(),a.getOrNull(15)?.toLongOrNull()?:0L)}.getOrNull()};private fun savePending(xs:List<PendingSale>)=p.edit().putString("pending",xs.joinToString("\n"){"${it.id}~${ei(it.items)}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${enc(it.shiftPerson)}~${enc(it.tableName)}~${enc(it.waiterName)}~${enc(it.counterName)}~${enc(it.chefName)}~${it.status}~${enc(it.specialInstructions)}~${it.updatedAt}~${it.servedAt}"}).apply();fun addPending(s:PendingSale){if(pending().none{it.id==s.id}&&!hasSale(s.id))savePending(pending()+s)};fun replacePending(s:PendingSale)=savePending(pending().map{if(it.id==s.id)s else it});fun removePending(id:Long)=savePending(pending().filterNot{it.id==id})
 
  // Shared service workflow metadata and audit history. Each transition is timestamped and attributed.
- fun upsertRemoteOrder(order:PendingSale){if(pending().any{it.id==order.id})replacePending(order)else addPending(order)}
- fun updateOrderWorkflow(id:Long, status:String, actor:String, role:String, note:String="", table:String?=null):Boolean {
+ @Synchronized fun upsertRemoteOrder(order:PendingSale){
+  val current=pending().firstOrNull{it.id==order.id}
+  if(current==null){addPending(order);return}
+  // Never let a delayed poll overwrite a newer amendment or kitchen status.
+  if(order.updatedAt>current.updatedAt)replacePending(order)
+ }
+ @Synchronized fun updateOrderWorkflow(id:Long, status:String, actor:String, role:String, note:String="", table:String?=null):Boolean {
   val order=pending().firstOrNull{it.id==id}?:return false
+  val allowed=when(order.status){
+   "NEW"->setOf("ACCEPTED","PREPARING")
+   "ACCEPTED"->setOf("PREPARING")
+   "PREPARING"->setOf("READY")
+   "READY"->setOf("SERVED")
+   else->emptySet()
+  }
+  if(status !in allowed)return false
+  if((status=="PREPARING"||status=="READY")&&role!="CHEF"&&role!="OWNER")return false
+  if(status=="SERVED"&&role!="WAITER"&&role!="OWNER")return false
+  if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER")return false
   val now=System.currentTimeMillis()
   val updated=order.copy(status=status,updatedAt=now,servedAt=if(status=="SERVED")now else order.servedAt,
    chefName=if(role=="CHEF")actor else order.chefName,
@@ -46,8 +62,9 @@ class Store(private val context:Context){
   appendOrderAudit(id,actor,role,status,note,now)
   return true
  }
- fun appendOrderAudit(orderId:Long, actor:String, role:String, action:String, detail:String="", at:Long=System.currentTimeMillis()) {
-  val a=org.json.JSONArray(p.getString("order_audit","[]")?:"[]")
+ @Synchronized fun appendOrderAudit(orderId:Long, actor:String, role:String, action:String, detail:String="", at:Long=System.currentTimeMillis()) {
+  val old=orderAudit();val a=org.json.JSONArray()
+  for(i in (old.length()-499).coerceAtLeast(0) until old.length())a.put(old.getJSONObject(i))
   a.put(org.json.JSONObject().put("orderId",orderId).put("actor",actor).put("role",role).put("action",action).put("detail",detail).put("time",at))
   p.edit().putString("order_audit",a.toString()).apply()
  }
