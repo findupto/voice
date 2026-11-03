@@ -33,7 +33,7 @@ object LocalNetworkSync {
   require(address.split(".").size==4&&address.split(".").all{it.toIntOrNull() in 0..255}){"Enter a valid owner IPv4 address."}
   val port=host.substringAfter(":",PORT.toString()).toIntOrNull()
   require(port!=null&&port in 1..65535){"Enter a valid local port."}
-  return "http://$address:$port$path
+  return "http://$address:$port$path"
  }
  private fun request(ip:String,token:String,path:String,method:String="GET",body:String?=null):String {
   val c=URL(endpoint(ip,path)).openConnection() as HttpURLConnection
