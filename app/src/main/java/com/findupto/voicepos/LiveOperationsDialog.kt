@@ -20,7 +20,7 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
  val ctx=androidx.compose.ui.platform.LocalContext.current
  val prefs=ctx.getSharedPreferences("voice_local_network",0)
  var ip by remember{mutableStateOf(prefs.getString("owner_ip","")?:"")}
- var code by remember{mutableStateOf(prefs.getString("owner_token","")?:LocalNetworkSync.token(ctx))}
+ var code by remember{mutableStateOf(prefs.getString("staff_session","")?:"")}
  var orders by remember{mutableStateOf(store.pending())}
  var message by remember{mutableStateOf("Enter the owner phone IP and access code.")}
  var clock by remember{mutableLongStateOf(System.currentTimeMillis())}
@@ -63,7 +63,7 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
  AlertDialog(onDismissRequest=onClose,title={Text("LIVE OPERATIONS • $role",fontWeight=FontWeight.Bold)},
  text={Column(Modifier.fillMaxWidth().heightIn(max=590.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   OutlinedTextField(ip,{ip=it;prefs.edit().putString("owner_ip",it).apply()},label={Text("Owner phone IP")},singleLine=true,modifier=Modifier.fillMaxWidth())
-  OutlinedTextField(code,{code=it;prefs.edit().putString("owner_token",it).apply()},label={Text("Access code")},singleLine=true,modifier=Modifier.fillMaxWidth())
+  OutlinedTextField(code,{code=it;prefs.edit().putString("owner_token",it).apply()},label={Text("Staff session")},singleLine=true,modifier=Modifier.fillMaxWidth())
   Text(message,style=MaterialTheme.typography.bodySmall)
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
    listOf("ACTIVE" to active.size,"READY" to ready,"PREPARING" to active.count{it.status=="PREPARING"}).forEach{(label,count)->
