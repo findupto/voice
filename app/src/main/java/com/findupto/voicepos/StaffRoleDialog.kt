@@ -19,7 +19,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  val context=LocalContext.current
  val prefs=context.getSharedPreferences("voice_local_network",0)
  val scope=rememberCoroutineScope()
- var ip by remember{mutableStateOf(prefs.getString("owner_ip","")?.takeIf{it.isNotBlank()}?:if(LocalNetworkSync.isRunning())"127.0.0.1" else "")}
+ var ip by remember{mutableStateOf(if(LocalNetworkSync.isRunning())"127.0.0.1" else prefs.getString("owner_ip","")?.takeIf{it.isNotBlank()}?:"")}
  var ownerCode by remember{mutableStateOf(LocalNetworkSync.token(context))}
  var name by remember{mutableStateOf(store.staffName())}
  var pin by remember{mutableStateOf("")}
@@ -53,7 +53,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
       "Welcome, ${result.getString("name")}."
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
-    TextButton(enabled=!busy,onClick={mode="OWNER_SETUP";message="On the owner phone, open Network → Start Main Server. If creating the owner on that same phone, use 127.0.0.1. On another phone, enter the owner phone address shown on its Network screen."}){Text("FIRST TIME? SET UP OWNER")}
+    TextButton(enabled=!busy,onClick={if(LocalNetworkSync.isRunning())ip="127.0.0.1";ownerCode=LocalNetworkSync.token(context);mode="OWNER_SETUP";message="Owner server detected on this phone. Create your owner account here."}){Text("FIRST TIME? SET UP OWNER")}
     if(currentRole=="OWNER"&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER: CREATE STAFF ACCOUNT")}
    }else if(mode=="OWNER_SETUP"){
     Text("OWNER SETUP",fontWeight=FontWeight.Bold)
@@ -62,7 +62,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
     OutlinedTextField(name,{name=it},label={Text("Owner name")},singleLine=true,modifier=Modifier.fillMaxWidth())
     OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("Create owner PIN (4–8 digits)")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
     Button(enabled=!busy&&ip.isNotBlank()&&ownerCode.isNotBlank()&&name.isNotBlank()&&pin.length in 4..8,onClick={
-     runTask({LocalNetworkSync.setupOwner(ip,ownerCode,name,pin);"Owner account created. Now sign in using the owner name and PIN."}){mode="SIGN_IN";pin=""}
+     runTask({LocalNetworkSync.testConnection(ip);LocalNetworkSync.setupOwner(ip,ownerCode,name,pin);val result=LocalNetworkSync.loginStaff(ip,name,pin);prefs.edit().putString("staff_session",result.getString("session")).putString("owner_ip",ip).apply();store.setStaffSession(result.getString("name"),result.getString("role")); "Owner account created. Signed in as ${result.getString("name")}."}){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SETTING UP…" else "CREATE OWNER ACCOUNT")}
     TextButton(onClick={mode="SIGN_IN"}){Text("BACK TO SIGN IN")}
    }else{
