@@ -36,7 +36,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                             Text("$localIp:8765", fontWeight = FontWeight.Bold)
                             Text("Access code", style = MaterialTheme.typography.labelMedium)
                             SelectionContainer { Text(accessCode, fontWeight = FontWeight.Bold) }
-                            Text("Share this address and access code with staff devices on the same network.", style = MaterialTheme.typography.bodySmall)
+                            Text("On this phone, create the owner account using 127.0.0.1. Staff phones should enter this address on the sign-in screen and use their own staff name and PIN.", style = MaterialTheme.typography.bodySmall)
                         }
                         Button(onClick = {
                             if (hosting) {
@@ -53,9 +53,9 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                     }
                 }
                 HorizontalDivider()
-                Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)
+                Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)\n                Text("First connect both phones to the same Wi-Fi or hotspot. Then enter the owner address and sign in from Staff Access.", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(value = ip, onValueChange = { ip = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_ip", it).apply() }, label = { Text("Owner phone IP address") }, placeholder = { Text("192.168.1.10") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Staff session token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Owner session token (OWNER only)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = {
                     if (ip.isBlank() || code.isBlank()) {
                         message = "Enter the owner's IP address and access code."
@@ -75,7 +75,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                     Text(if (busy) "SYNCHRONIZING…" else "SYNC WITH MAIN DEVICE")
                 }
                 Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                Text("Network safety: Voice POS will not enable/disable Wi-Fi, switch networks, or start a hotspot automatically. Connect both phones to the same existing Wi-Fi/hotspot first.", style = MaterialTheme.typography.bodySmall)
+                Text("Staff accounts connect through Staff Access. The sync tool is only for an OWNER session; it is not needed for normal waiter, chef, counter, or rider live orders.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("CLOSE") } }
