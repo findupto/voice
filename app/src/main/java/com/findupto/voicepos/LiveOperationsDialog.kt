@@ -29,7 +29,14 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
   scope.launch{
    runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pushStatus(ip,code,o.id,status,actor,role);LocalNetworkSync.pullOrders(ip,code,store)}}
     .onSuccess{orders=it;message="Order updated: $status"}
-    .onFailure{message=it.message?:"Update failed"}
+    .onFailure{
+     if(role=="RIDER"&&status in setOf("OUT_FOR_DELIVERY","DELIVERED")){
+      store.updateOrderWorkflow(o.id,status,actor,role)
+      store.queueOfflineDeliveryUpdate(o.id,status,actor)
+      orders=store.pending()
+      message="Saved offline • "+store.offlineDeliveryUpdates().length()+" delivery update(s) waiting to sync"
+     }else message=it.message?:"Update failed"
+    }
    onChanged()
   }
  }
@@ -38,11 +45,19 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
   while(true){
    if(ip.isNotBlank()&&code.isNotBlank()){
     val started=System.currentTimeMillis()
-    runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pullOrders(ip,code,store)}}
+    runCatching{withContext(Dispatchers.IO){
+     val queued=store.offlineDeliveryUpdates()
+     for(i in 0 until queued.length()){
+      val q=queued.getJSONObject(i)
+      LocalNetworkSync.pushStatus(ip,code,q.getLong("id"),q.getString("status"),q.optString("actor"),"RIDER")
+      store.removeOfflineDeliveryUpdate(0)
+     }
+     LocalNetworkSync.pullOrders(ip,code,store)
+    }}
      .onSuccess{
       orders=it
       val elapsed=System.currentTimeMillis()-started
-      message="Connected • ${it.size} orders • ${elapsed} ms"
+      message="Connected • ${it.size} orders • ${elapsed} ms • "+store.offlineDeliveryUpdates().length()+" pending"
       nextDelay=3000L
      }
      .onFailure{
