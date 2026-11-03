@@ -41,8 +41,8 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
    OutlinedTextField(ownerCode,{ownerCode=it;prefs.edit().putString("owner_token",it).apply()},label={Text("Owner setup/access code")},singleLine=true,modifier=Modifier.fillMaxWidth())
    OutlinedTextField(name,{name=it},label={Text("Staff name")},singleLine=true,modifier=Modifier.fillMaxWidth())
    OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("4–8 digit PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
-   Text("Assigned role",style=MaterialTheme.typography.labelMedium)
-   Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("OWNER","COUNTER","WAITER","CHEF").forEach{r->FilterChip(selected=role==r,onClick={role=r},label={Text(r)})}}
+   Text("Assigned staff role",style=MaterialTheme.typography.labelMedium)
+   Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER").forEach{r->FilterChip(selected=role==r,onClick={role=r},label={Text(r)})}}
    if(session.isNotBlank())Text("This device: ${store.staffName()} • ${store.staffRole()}",fontWeight=FontWeight.Bold)
    Text(message,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.secondary)
   }},
