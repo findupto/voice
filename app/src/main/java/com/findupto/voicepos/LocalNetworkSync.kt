@@ -10,6 +10,9 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
+import java.util.concurrent.ConcurrentHashMap
 import java.util.Collections
 
 object LocalNetworkSync {
@@ -22,7 +25,7 @@ object LocalNetworkSync {
  }
  @Synchronized fun start(context:Context,store:Store):Boolean {
   if(server?.isAlive==true)return true
-  return runCatching{PosLanServer(store,token(context)).also{it.start(NanoHTTPD.SOCKET_READ_TIMEOUT,false);server=it};true}.getOrDefault(false)
+  return runCatching{PosLanServer(context,store,token(context)).also{it.start(NanoHTTPD.SOCKET_READ_TIMEOUT,false);server=it};true}.getOrDefault(false)
  }
  @Synchronized fun stop(){server?.stop();server=null}
  fun isRunning()=server?.isAlive==true
@@ -35,11 +38,11 @@ object LocalNetworkSync {
   require(port!=null&&port in 1..65535){"Enter a valid local port."}
   return "http://$address:$port$path"
  }
- private fun request(ip:String,token:String,path:String,method:String="GET",body:String?=null):String {
+ private fun request(ip:String,token:String,path:String,method:String="GET",body:String?=null,ownerCode:Boolean=false):String {
   val c=URL(endpoint(ip,path)).openConnection() as HttpURLConnection
   try {
    c.connectTimeout=2500;c.readTimeout=5000;c.requestMethod=method
-   c.setRequestProperty("X-POS-Token",token.trim())
+   c.setRequestProperty(if(ownerCode) "X-POS-Token" else "X-POS-Session",token.trim())
    c.setRequestProperty("Accept","application/json")
    if(body!=null){val bytes=body.toByteArray(Charsets.UTF_8);c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setFixedLengthStreamingMode(bytes.size);c.outputStream.use{it.write(bytes)}}
    val status=c.responseCode
@@ -66,23 +69,67 @@ object LocalNetworkSync {
   return result
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
- fun pushStatus(ip:String,token:String,id:Long,status:String,actor:String,role:String,note:String=""):String=request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).put("actor",actor).put("role",role).put("note",note).toString())
+ fun pushStatus(ip:String,token:String,id:Long,status:String,actor:String,role:String,note:String=""):String=request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).put("note",note).toString())
+ fun loginStaff(ip:String,ownerCode:String,name:String,pin:String):JSONObject=JSONObject(request(ip,ownerCode,"/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
+ fun enrollStaff(ip:String,ownerSession:String,name:String,pin:String,role:String):String=request(ip,ownerSession,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role",role).toString())
  private fun orderJson(s:PendingSale)=JSONObject().apply{
   put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt)
   put("items",JSONArray().apply{s.items.forEach{put(JSONObject().put("name",it.name).put("qty",it.qty).put("price",it.price))}})
  }
- private class PosLanServer(private val store:Store,private val secret:String):NanoHTTPD("0.0.0.0",PORT){
+ private data class StaffSession(val name:String,val role:String,val expiresAt:Long)
+ private class PosLanServer(private val context:Context,private val store:Store,private val secret:String):NanoHTTPD("0.0.0.0",PORT){
+  private val sessions=ConcurrentHashMap<String,StaffSession>()
+  private val authPrefs=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
+  private fun accounts()=runCatching{JSONObject(authPrefs.getString("accounts","{}")?: "{}")}.getOrDefault(JSONObject())
+  private fun hex(bytes:ByteArray)=bytes.joinToString(""){"%02x".format(it)}
+  private fun unhex(value:String)=value.chunked(2).map{it.toInt(16).toByte()}.toByteArray()
+  private fun hashPin(pin:String,salt:ByteArray):String {
+   val spec=PBEKeySpec(pin.toCharArray(),salt,120000,256)
+   return try{hex(SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded)}finally{spec.clearPassword()}
+  }
+  private fun staffSession(s:IHTTPSession):StaffSession? {
+   val key=s.headers["x-pos-session"].orEmpty();val found=sessions[key]?:return null
+   if(found.expiresAt<System.currentTimeMillis()){sessions.remove(key);return null};return found
+  }
+  private fun isOwner(s:IHTTPSession)=staffSession(s)?.role=="OWNER"
   override fun serve(session:IHTTPSession):Response {
    if(session.uri=="/health"&&session.method==Method.GET)return json(Response.Status.OK,JSONObject().put("service","Voice POS live orders").put("version",2))
    val supplied=session.headers["x-pos-token"].orEmpty()
-   if(!MessageDigest.isEqual(supplied.toByteArray(Charsets.UTF_8),secret.toByteArray(Charsets.UTF_8)))
-    return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
+   val firstSetup=session.uri=="/staff/enroll"&&session.method==Method.POST&&accounts().length()==0
+   val login=session.uri=="/staff/login"&&session.method==Method.POST
+   if(login||firstSetup){
+    if(!MessageDigest.isEqual(supplied.toByteArray(Charsets.UTF_8),secret.toByteArray(Charsets.UTF_8)))return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
+   } else if(staffSession(session)==null)return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Staff sign-in required"))
    val declaredLength=session.headers["content-length"]?.toLongOrNull()?:0L
    if(declaredLength>8_000_000L)return json(Response.Status.BAD_REQUEST,JSONObject().put("error","Request is too large"))
    return try {
     when {
+     session.uri=="/staff/login"&&session.method==Method.POST -> {
+      val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
+      require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
+      val account=accounts().optJSONObject(name.lowercase())?:throw IllegalArgumentException("Staff account not found")
+      require(account.optBoolean("active",true)){"This staff account is disabled"}
+      val actual=hashPin(pin,unhex(account.getString("salt")))
+      require(MessageDigest.isEqual(actual.toByteArray(),account.getString("hash").toByteArray())){"Incorrect staff PIN"}
+      val key=hex(ByteArray(32).also{SecureRandom().nextBytes(it)})
+      val role=account.getString("role");sessions[key]=StaffSession(account.getString("name"),role,System.currentTimeMillis()+43200000L)
+      json(Response.Status.OK,JSONObject().put("session",key).put("name",account.getString("name")).put("role",role))
+     }
+     session.uri=="/staff/enroll"&&session.method==Method.POST -> {
+      require(firstSetup||isOwner(session)){"Only the owner can manage staff accounts"}
+      val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
+      require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
+      require(role in setOf("OWNER","COUNTER","WAITER","CHEF")){"Invalid staff role"}
+      if(firstSetup)require(role=="OWNER"){"First account must be OWNER"}
+      val a=accounts();val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
+      val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
+      a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
+      authPrefs.edit().putString("accounts",a.toString()).apply()
+      json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
+     }
      session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
      session.uri=="/orders"&&session.method==Method.POST -> {
+      require(staffSession(session)?.role in setOf("WAITER","OWNER")){"Only a waiter can submit orders"}
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
       require(a.length() in 1..100) { "An order must contain 1 to 100 item lines" }
       val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price)}
@@ -94,19 +141,21 @@ object LocalNetworkSync {
       val existing=store.pending().firstOrNull{it.id==id}
       val order=if(existing==null)incoming else incoming.copy(status=existing.status,waiterName=existing.waiterName,chefName=existing.chefName,counterName=existing.counterName,servedAt=existing.servedAt)
       store.upsertRemoteOrder(order)
-      if(existing==null)store.appendOrderAudit(order.id,order.waiterName.ifBlank{order.shiftPerson},"WAITER","ORDER_SENT","Order received by owner device")
+      if(existing==null)store.appendOrderAudit(order.id,staffSession(session)?.name?:order.waiterName,staffSession(session)?.role?:"WAITER","ORDER_SENT","Order received by owner device")
       json(Response.Status.OK,JSONObject().put("ok",true).put("id",order.id))
      }
      session.uri=="/orders/status"&&session.method==Method.POST -> {
-      val x=JSONObject(readBody(session));val role=x.optString("role").uppercase();val actor=x.optString("actor").trim()
-      require(role in setOf("OWNER","COUNTER","WAITER","CHEF")){"Invalid staff role"}
-      require(actor.isNotBlank()&&actor.length<=80){"Staff name is required"}
+      val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      val role=authenticated.role;val actor=authenticated.name
       val id=x.getLong("id");val status=x.getString("status").uppercase()
       require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED")){"Invalid order update"}
       val ok=store.updateOrderWorkflow(id,status,actor,role,x.optString("note").take(1000))
       if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Order is missing or the requested workflow transition is not allowed"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
-     session.uri=="/sync"&&session.method==Method.POST -> newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session,8_000_000L)))
+     session.uri=="/sync"&&session.method==Method.POST -> {
+      require(isOwner(session)){"Only the owner can synchronize the full backup"}
+      newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session,8_000_000L)))
+     }
      else -> json(Response.Status.NOT_FOUND,JSONObject().put("error","Not found"))
     }
    }catch(e:Exception){json(Response.Status.BAD_REQUEST,JSONObject().put("error",e.message?:"Request failed"))}
