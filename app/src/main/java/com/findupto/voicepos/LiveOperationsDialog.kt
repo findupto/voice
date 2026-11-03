@@ -57,7 +57,7 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
    delay(nextDelay)
   }
  }
- val active=orders.filter{it.status!="SERVED"}
+ val active=orders.filter{it.status !in setOf("SERVED","DELIVERED")}
  val ready=active.count{it.status=="READY"}
  val audit=store.orderAudit()
  AlertDialog(onDismissRequest=onClose,title={Text("LIVE OPERATIONS • $role",fontWeight=FontWeight.Bold)},
@@ -72,7 +72,7 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
   }
   HorizontalDivider()
   LazyColumn(Modifier.weight(1f,false),verticalArrangement=Arrangement.spacedBy(7.dp)){
-   items(orders.filter{it.status!="SERVED"},key={it.id}){o->
+   items(orders.filter{it.status !in setOf("SERVED","DELIVERED")},key={it.id}){o->
     val age=((clock-o.time).coerceAtLeast(0L)/60000L).toInt()
     Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=if(age>=15)MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant)){
      Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
@@ -85,16 +85,18 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
       if(o.specialInstructions.isNotBlank())Text("Note: ${o.specialInstructions}")
       Text("Waiter ${o.waiterName.ifBlank{o.shiftPerson}} • Chef ${o.chefName} • Counter ${o.counterName}",style=MaterialTheme.typography.labelSmall)
       Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
-       if((role=="COUNTER"||role=="OWNER")&&o.status=="NEW")TextButton(onClick={update(o,"ACCEPTED")}){Text("ACCEPT")}
-       if((role=="CHEF"||role=="OWNER")&&(o.status=="NEW"||o.status=="ACCEPTED"))TextButton(onClick={update(o,"PREPARING")}){Text("START")}
-       if((role=="CHEF"||role=="OWNER")&&o.status=="PREPARING")Button(onClick={update(o,"READY")}){Text("READY")}
-       if((role=="WAITER"||role=="OWNER")&&o.status=="READY")Button(onClick={update(o,"SERVED")}){Text("SERVED")}
+       if((role=="COUNTER"||role=="OWNER"||role=="ADMIN")&&o.status=="NEW")TextButton(onClick={update(o,"ACCEPTED")}){Text("ACCEPT")}
+       if((role=="CHEF"||role=="OWNER"||role=="ADMIN")&&(o.status=="NEW"||o.status=="ACCEPTED"))TextButton(onClick={update(o,"PREPARING")}){Text("START")}
+       if((role=="CHEF"||role=="OWNER"||role=="ADMIN")&&o.status=="PREPARING")Button(onClick={update(o,"READY")}){Text("READY")}
+       if((role=="WAITER"||role=="OWNER"||role=="ADMIN")&&o.status=="READY"&&o.orderType!="DELIVERY")Button(onClick={update(o,"SERVED")}){Text("SERVED")}
+       if(role=="RIDER"&&o.orderType=="DELIVERY"&&o.status=="READY")Button(onClick={update(o,"OUT_FOR_DELIVERY")}){Text("PICK UP")}
+       if(role=="RIDER"&&o.status=="OUT_FOR_DELIVERY")Button(onClick={update(o,"DELIVERED")}){Text("DELIVERED")}
       }
      }
     }
    }
   }
-  if(orders.none{it.status!="SERVED"})Text("No active orders.")
+  if(orders.none{it.status !in setOf("SERVED","DELIVERED")})Text("No active orders.")
   if(role=="OWNER"){
    HorizontalDivider()
    Text("RECENT ACTIVITY • ${audit.length()} total records",fontWeight=FontWeight.Bold)
