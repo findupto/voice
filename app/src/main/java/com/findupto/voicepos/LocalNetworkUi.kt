@@ -53,7 +53,8 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                     }
                 }
                 HorizontalDivider()
-                Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)\n                Text("First connect both phones to the same Wi-Fi or hotspot. Then enter the owner address and sign in from Staff Access.", style = MaterialTheme.typography.bodySmall)
+                Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)
+                Text("First connect both phones to the same Wi-Fi or hotspot. Then enter the owner address and sign in from Staff Access.", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(value = ip, onValueChange = { ip = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_ip", it).apply() }, label = { Text("Owner phone IP address") }, placeholder = { Text("192.168.1.10") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Owner session token (OWNER only)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = {
