@@ -34,14 +34,27 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
   }
  }
  LaunchedEffect(ip,code){
+  var nextDelay=3000L
   while(true){
    if(ip.isNotBlank()&&code.isNotBlank()){
+    val started=System.currentTimeMillis()
     runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pullOrders(ip,code,store)}}
-     .onSuccess{orders=it;message="Connected • refreshed every 4 seconds"}
-     .onFailure{message=it.message?:"Connection failed"}
+     .onSuccess{
+      orders=it
+      val elapsed=System.currentTimeMillis()-started
+      message="Connected • ${it.size} orders • ${elapsed} ms"
+      nextDelay=3000L
+     }
+     .onFailure{
+      message=it.message?:"Connection failed"
+      nextDelay=(nextDelay*2).coerceAtMost(20000L)
+     }
+   } else {
+    message="Enter the owner phone IP and access code."
+    nextDelay=3000L
    }
    clock=System.currentTimeMillis()
-   delay(4000)
+   delay(nextDelay)
   }
  }
  val active=orders.filter{it.status!="SERVED"}
