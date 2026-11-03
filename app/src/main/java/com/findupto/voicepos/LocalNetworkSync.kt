@@ -72,7 +72,7 @@ object LocalNetworkSync {
    if(!MessageDigest.isEqual(supplied.toByteArray(Charsets.UTF_8),secret.toByteArray(Charsets.UTF_8)))
     return json(Response.Status.UNAUTHORIZED,JSONObject().put("error","Invalid owner access code"))
    val declaredLength=session.headers["content-length"]?.toLongOrNull()?:0L
-   if(declaredLength>1_000_000L)return json(Response.Status.BAD_REQUEST,JSONObject().put("error","Request is too large"))
+   if(declaredLength>8_000_000L)return json(Response.Status.BAD_REQUEST,JSONObject().put("error","Request is too large"))
    return try {
     when {
      session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
@@ -96,7 +96,7 @@ object LocalNetworkSync {
       val ok=store.updateOrderWorkflow(x.getLong("id"),x.getString("status"),actor,role,x.optString("note").take(1000))
       if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Order is missing or the requested workflow transition is not allowed"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
-     session.uri=="/sync"&&session.method==Method.POST -> newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session)))
+     session.uri=="/sync"&&session.method==Method.POST -> newFixedLengthResponse(Response.Status.OK,"application/json; charset=utf-8",store.mergeBackup(readBody(session,8_000_000L)))
      else -> json(Response.Status.NOT_FOUND,JSONObject().put("error","Not found"))
     }
    }catch(e:Exception){json(Response.Status.BAD_REQUEST,JSONObject().put("error",e.message?:"Request failed"))}
@@ -105,7 +105,7 @@ object LocalNetworkSync {
    val length=s.headers["content-length"]?.toLongOrNull()?:0L
    require(length in 1..1_000_000L){"Request body must be between 1 byte and 1 MB"}
    val files=HashMap<String,String>();s.parseBody(files)
-   return (files["postData"]?:throw IllegalArgumentException("Empty request")).also{require(it.toByteArray(Charsets.UTF_8).size<=1_000_000){"Request is too large"}}
+   return (files["postData"]?:throw IllegalArgumentException("Empty request")).also{require(it.toByteArray(Charsets.UTF_8).size<=maxBytes){"Request is too large"}}
   }
   private fun json(status:Response.Status,value:JSONObject)=newFixedLengthResponse(status,"application/json; charset=utf-8",value.toString())
   private fun json(status:Response.Status,value:JSONArray)=newFixedLengthResponse(status,"application/json; charset=utf-8",value.toString())
