@@ -48,7 +48,14 @@ object LocalNetworkSync {
  private fun endpoint(ip:String,path:String):String {
   val host=ip.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
   val address=host.substringBefore(":")
-  require(address.split(".").size==4&&address.split(".").all{it.toIntOrNull() in 0..255}){"Enter a valid owner IPv4 address."}
+  val octets=address.split(".").map{it.toIntOrNull()?:-1}
+  require(octets.size==4&&octets.all{it in 0..255}){"Enter a valid owner IPv4 address."}
+  val privateAddress=octets[0]==10||
+   (octets[0]==172&&octets[1] in 16..31)||
+   (octets[0]==192&&octets[1]==168)||
+   (octets[0]==169&&octets[1]==254)||
+   (octets[0]==100&&octets[1] in 64..127)
+  require(privateAddress){"Only a private/local network IPv4 address is allowed; public internet addresses are blocked."}
   val port=host.substringAfter(":",PORT.toString()).toIntOrNull()
   require(port!=null&&port in 1..65535){"Enter a valid local port."}
   return "http://$address:$port$path"
