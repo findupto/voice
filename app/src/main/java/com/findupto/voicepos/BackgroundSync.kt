@@ -51,8 +51,6 @@ class PosBackgroundSyncWorker(context:Context,params:WorkerParameters):Worker(co
   return try{
    val store=Store(applicationContext)
    LocalNetworkSync.retryOfflineOrders(ip,session,applicationContext)
-   // Keep WorkManager in retry state until every queued order has been accepted.
-   if(LocalNetworkSync.offlineOrderQueueCount(applicationContext)>0)return Result.retry()
    // Remove only the head after the server confirms it; do not skip entries as the queue shrinks.
    while(true){
     val queued=store.offlineDeliveryUpdates()
@@ -61,6 +59,8 @@ class PosBackgroundSyncWorker(context:Context,params:WorkerParameters):Worker(co
     LocalNetworkSync.pushStatus(ip,session,item.getLong("id"),item.getString("status"),item.optString("actor"),"RIDER")
     store.removeOfflineDeliveryUpdate(0)
    }
+   // Keep WorkManager in retry state until every queued order has been accepted.
+   if(LocalNetworkSync.offlineOrderQueueCount(applicationContext)>0)return Result.retry()
    LocalNetworkSync.pullOrders(ip,session,store)
    Result.success()
   }catch(_:Exception){Result.retry()}
