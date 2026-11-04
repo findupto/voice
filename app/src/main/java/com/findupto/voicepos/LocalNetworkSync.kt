@@ -106,7 +106,12 @@ object LocalNetworkSync {
    val order=PendingSale(x.getLong("id"),lines,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L),x.optString("kitchenProgress","{}"))
    store.upsertRemoteOrder(order);result.add(order)
   }
-  runCatching{store.mergeOrderAudit(JSONArray(request(ip,token,"/orders/audit")))}
+  runCatching{
+   store.mergeOrderAudit(JSONArray(request(ip,token,"/orders/audit")))
+   // The owner removes billed orders from its active queue; audit events carry
+   // the durable tombstone so waiter devices can remove the same stale copy.
+   store.reconcileCompletedOrdersFromAudit()
+  }
   runCatching{store.mergeShifts(JSONArray(request(ip,token,"/shifts")))}
   runCatching{request(ip,token,"/shifts","POST",store.shiftsJson().toString())}
   return result
