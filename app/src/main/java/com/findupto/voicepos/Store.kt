@@ -136,8 +136,6 @@ class Store(private val context:Context){
   p.edit().putString("completed_order_ids",saved.toString()).commit()
   if(ids.isNotEmpty())savePending(pending().filterNot{it.id in ids})
  }
-  if(billedIds.isNotEmpty())savePending(pending().filterNot{it.id in billedIds})
- }
  fun orderAudit():org.json.JSONArray=runCatching{org.json.JSONArray(p.getString("order_audit","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
  fun setStaffSession(name:String,role:String){p.edit().putString("staff_name",name.trim()).putString("staff_role",role.uppercase()).apply()}
  fun staffName()=p.getString("staff_name","")?:""
