@@ -70,7 +70,8 @@ class Store(private val context:Context){
   if((status=="PREPARING"||status=="READY")&&role!="CHEF"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="SERVED"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status in setOf("OUT_FOR_DELIVERY","DELIVERED")&&role!="RIDER"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
-  if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false\n  if(status=="BILLED"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="BILLED"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
   val now=System.currentTimeMillis()
   val updated=order.copy(status=status,updatedAt=now,servedAt=if(status=="SERVED")now else order.servedAt,
    chefName=if(role=="CHEF"||role=="DISHWASHER")actor else order.chefName,
@@ -80,6 +81,7 @@ class Store(private val context:Context){
    tableName=table?:order.tableName)
   replacePending(updated)
   appendOrderAudit(id,actor,role,status,note,now)
+  if(status=="BILLED")removePending(id)
   return true
  }
  @Synchronized fun appendOrderAudit(orderId:Long, actor:String, role:String, action:String, detail:String="", at:Long=System.currentTimeMillis()) {
