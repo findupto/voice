@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 
+@OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
 fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
     val context = LocalContext.current
