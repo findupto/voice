@@ -35,6 +35,9 @@ import androidx.compose.ui.platform.LocalContext
     val context=LocalContext.current
     val inventory=remember(context){InventoryStore(context)}
     val lowStock=inventory.lowStock()
+    val stockValue=inventory.items().sumOf{it.quantity.coerceAtLeast(0.0)*it.unitCost}
+    val estimatedIngredientCost=ss.sumOf{inventory.estimatedRecipeCost(it.items)}
+    val estimatedGrossProfit=sv-estimatedIngredientCost
     val activeOrders=store.pending().filter{it.status !in setOf("SERVED","DELIVERED")}
     val overdueOrders=activeOrders.filter{System.currentTimeMillis()-it.time>=15*60*1000L}
     val todayStart=java.util.Calendar.getInstance().apply{set(java.util.Calendar.HOUR_OF_DAY,0);set(java.util.Calendar.MINUTE,0);set(java.util.Calendar.SECOND,0);set(java.util.Calendar.MILLISECOND,0)}.timeInMillis
@@ -65,6 +68,9 @@ import androidx.compose.ui.platform.LocalContext
         Stat("Total Sales",sv)
         Stat("Expenses",ev)
         Stat("Sales less expenses",sv-ev)
+        Stat("Estimated ingredient cost",estimatedIngredientCost)
+        Stat("Estimated gross profit before expenses",estimatedGrossProfit)
+        Stat("Current stock value",stockValue)
         Stat("Payments Received",received)
         Stat("Current Cash in Hand",cash)
         val latestShift=store.shifts().filter{inRange(it.openedAt,range)}.maxByOrNull{it.openedAt}
@@ -82,6 +88,9 @@ import androidx.compose.ui.platform.LocalContext
                 append("Total sales: ").append(money(sv)).append("\n")
                 append("Expenses: ").append(money(ev)).append("\n")
                 append("Sales less expenses: ").append(money(sv-ev)).append("\n")
+                append("Estimated ingredient cost: ").append(money(estimatedIngredientCost)).append("\n")
+                append("Estimated gross profit before expenses: ").append(money(estimatedGrossProfit)).append("\n")
+                append("Current stock value: ").append(money(stockValue)).append("\n")
                 append("Payments received: ").append(money(received)).append("\n")
                 append("Current cash in hand: ").append(money(cash)).append("\n")
                 append("Opening counter cash").append(latestShift?.let{" (${it.person})"}.orEmpty()).append(": ").append(money(latestShift?.openingCash?:0.0)).append("\n")
