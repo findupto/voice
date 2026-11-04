@@ -54,8 +54,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
       "Welcome, ${result.getString("name")}."
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
-    Text("Default accounts on a new Admin server: Malik / 0099 (Owner), Admin / 1122 (Admin).",style=MaterialTheme.typography.bodySmall)
-    if(currentRole in setOf("OWNER","ADMIN")&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER / ADMIN: CREATE STAFF ACCOUNT")}
+    if(currentRole=="OWNER"&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER: CREATE STAFF ACCOUNT")}
    }else if(mode=="OWNER_SETUP"){
     Text("OWNER SETUP",fontWeight=FontWeight.Bold)
     Text("On the owner's phone: open Network (router icon) → Start Main Server. Copy the Access code shown there.")
@@ -81,7 +80,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
     TextButton(onClick={mode="SIGN_IN"}){Text("BACK")}
    }
    Text(message,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.secondary)
-   if(session.isNotBlank())Text("Signed in: ${store.staffName()} • ${store.staffRole()}",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium)
+   if(session.isNotBlank())Text("Signed in: ${store.staffRole()}",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium)
   }},
   confirmButton={TextButton(onClick=onClose){Text("CLOSE")}}
  )
