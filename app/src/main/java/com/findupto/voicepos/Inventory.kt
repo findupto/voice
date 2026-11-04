@@ -72,18 +72,17 @@ class InventoryStore(context: Context) {
         if (name.isBlank() || unit.isBlank() || !quantity.isFinite() || !minimum.isFinite() || !unitCost.isFinite() || quantity < 0 || minimum < 0 || unitCost < 0) return false
         if (items().any { canonicalProductKey(it.name) == canonicalProductKey(name) }) return false
         val id = System.currentTimeMillis()
-        saveItems(items() + InventoryStockItem(id, name.trim(), category, quantity, unit.trim(), minimum, unitCost, 0.0, System.currentTimeMillis()))
-        logMovement(name.trim(), quantity, "Opening stock", id, "opening:$id")
-        return true
+        val now = System.currentTimeMillis()
+        val next = items() + InventoryStockItem(id, name.trim(), category, quantity, unit.trim(), minimum, unitCost, 0.0, now)
+        return persistStockChange(next, name.trim(), quantity, "Opening stock", id, "opening:$id", now)
     }
     @Synchronized fun adjustStock(id: Long, delta: Double, reason: String): Boolean {
         if (!delta.isFinite()) return false
         val old = items().firstOrNull { it.id == id } ?: return false
         if (delta == 0.0 || (delta < 0 && old.quantity + delta < 0)) return false
         val now = System.currentTimeMillis()
-        saveItems(items().map { if (it.id == id) it.copy(quantity = it.quantity + delta, updatedAt = now) else it })
-        logMovement(old.name, delta, reason, id)
-        return true
+        val next = items().map { if (it.id == id) it.copy(quantity = it.quantity + delta, updatedAt = now) else it }
+        return persistStockChange(next, old.name, delta, reason, id, java.util.UUID.randomUUID().toString(), now)
     }
     @Synchronized fun reconcileCount(id: Long, countedQuantity: Double, note: String = "Physical stock count"): Boolean {
         if (!countedQuantity.isFinite() || countedQuantity < 0.0) return false
@@ -91,9 +90,8 @@ class InventoryStore(context: Context) {
         val delta = countedQuantity - current.quantity
         if (kotlin.math.abs(delta) < 0.0000001) return true
         val now = System.currentTimeMillis()
-        saveItems(items().map { if (it.id == id) it.copy(quantity = countedQuantity, updatedAt = now) else it })
-        logMovement(current.name, delta, note, id)
-        return true
+        val next = items().map { if (it.id == id) it.copy(quantity = countedQuantity, updatedAt = now) else it }
+        return persistStockChange(next, current.name, delta, note, id, java.util.UUID.randomUUID().toString(), now)
     }
     fun estimatedRecipeCost(saleItems: List<SaleItem>): Double {
         val stockByKey = items().associateBy { canonicalProductKey(it.name) }
@@ -168,6 +166,11 @@ class InventoryStore(context: Context) {
         if (saleId <= 0L) return false
         val processed = JSONArray(prefs.getString("consumed_sales", "[]"))
         if ((0 until processed.length()).any { processed.optLong(it) == saleId }) return true
+        val existingMovements = JSONArray(prefs.getString("movements", "[]"))
+        if ((0 until existingMovements.length()).any { existingMovements.optJSONObject(it)?.optString("referenceId") == "sale:$saleId" }) {
+            processed.put(saleId)
+            return prefs.edit().putString("consumed_sales", processed.toString()).commit()
+        }
         val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
         val stock = items().toMutableList()
         val required = linkedMapOf<Int, Double>()
@@ -187,22 +190,35 @@ class InventoryStore(context: Context) {
         if (required.any { (index, amount) -> !amount.isFinite() || stock[index].quantity + 1e-9 < amount }) return false
         val now = System.currentTimeMillis()
         required.forEach { (index, amount) -> stock[index] = stock[index].copy(quantity = stock[index].quantity - amount, updatedAt = now) }
-        saveItems(stock)
+        val movementArray = JSONArray(prefs.getString("movements", "[]"))
         required.forEach { (index, amount) ->
-            logMovement(stock[index].name, -amount, "Sale: recipe consumption", stock[index].id, "sale:$saleId:${stock[index].id}")
+            val item = stock[index]
+            val movementId = "sale:$saleId:${item.id}"
+            if ((0 until movementArray.length()).none { movementArray.optJSONObject(it)?.optString("id") == movementId }) {
+                movementArray.put(movementRecord(item.name, -amount, "Sale: recipe consumption", item.id, movementId, now))
+            }
         }
         processed.put(saleId)
-        prefs.edit().putString("consumed_sales", processed.toString()).apply()
-        return true
+        return prefs.edit().putString("items", itemsArray(stock).toString())
+            .putString("movements", movementArray.toString())
+            .putString("consumed_sales", processed.toString()).commit()
     }
     fun consumeSale(saleItems: List<SaleItem>) { consumeSale(System.currentTimeMillis(), saleItems) }
-    private fun logMovement(name: String, quantity: Double, reason: String, stockId: Long = 0L, movementId: String = java.util.UUID.randomUUID().toString()) {
-        val a = JSONArray(prefs.getString("movements", "[]"))
-        if ((0 until a.length()).any { a.optJSONObject(it)?.optString("id") == movementId }) return
-        a.put(JSONObject().put("id", movementId).put("stockId", stockId).put("referenceId", movementId.substringBeforeLast(':', ""))
-            .put("time", System.currentTimeMillis()).put("name", name).put("quantity", quantity).put("reason", reason)
-            .put("actor", prefs.getString("staff_name", "").orEmpty()))
-        prefs.edit().putString("movements", a.toString()).apply()
+    private fun itemsArray(xs: List<InventoryStockItem>) = JSONArray().apply {
+        xs.forEach { x -> put(JSONObject().put("id", x.id).put("name", x.name).put("category", x.category)
+            .put("quantity", x.quantity).put("unit", x.unit).put("minimum", x.minimum).put("unitCost", x.unitCost)
+            .put("baseQuantity", x.baseQuantity).put("updatedAt", x.updatedAt)) }
+    }
+    private fun movementRecord(name: String, quantity: Double, reason: String, stockId: Long, movementId: String, time: Long) =
+        JSONObject().put("id", movementId).put("stockId", stockId).put("referenceId", movementId.substringBeforeLast(':', ""))
+            .put("time", time).put("name", name).put("quantity", quantity).put("reason", reason)
+            .put("actor", prefs.getString("staff_name", "").orEmpty())
+    private fun persistStockChange(xs: List<InventoryStockItem>, name: String, quantity: Double, reason: String, stockId: Long, movementId: String, time: Long): Boolean {
+        val movements = JSONArray(prefs.getString("movements", "[]"))
+        if ((0 until movements.length()).none { movements.optJSONObject(it)?.optString("id") == movementId }) {
+            movements.put(movementRecord(name, quantity, reason, stockId, movementId, time))
+        }
+        return prefs.edit().putString("items", itemsArray(xs).toString()).putString("movements", movements.toString()).commit()
     }
     private fun migrateLegacyMovementBaseline() {
         val all = items()
