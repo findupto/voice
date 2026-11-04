@@ -11,7 +11,8 @@ import org.json.JSONObject
 @androidx.camera.core.ExperimentalGetImage
 class OrderAlertService : Service() {
     companion object {
-        private const val CHANNEL = "pos_order_alerts"
+        private const val CHANNEL = "pos_order_updates_v2"
+        private const val SERVICE_CHANNEL = "pos_service_status_v1"
         private const val SERVICE_ID = 8100
         private const val ACTION_ACK = "com.findupto.voicepos.ACK_ORDER_ALERT"
     }
@@ -22,7 +23,7 @@ class OrderAlertService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(SERVICE_ID, NotificationCompat.Builder(this, CHANNEL)
+        startForeground(SERVICE_ID, NotificationCompat.Builder(this, SERVICE_CHANNEL)
             .setSmallIcon(R.drawable.ic_premium_pos)
             .setContentTitle("Restaurant POS alerts active")
             .setContentText("Watching for waiter, kitchen and counter orders")
@@ -64,8 +65,8 @@ class OrderAlertService : Service() {
                         val old = state.getString("seen_${order.id}", null)
                         val acknowledged = state.getString("ack_${order.id}", null) == signature
                         val lastAlert = state.getLong("alert_time_${order.id}", 0L)
-                        val repeatDue = old == signature && System.currentTimeMillis() - lastAlert >= 30_000L
-                        if (shouldAlert(role, order) && !acknowledged && (old != signature || repeatDue)) {
+                        val repeatDue = false
+                        if (shouldAlert(role, order) && !acknowledged && old != signature) {
                             postOrderAlert(order.id, signature, role, order.tableName.ifBlank { order.orderType },
                                 order.items.joinToString { "${it.qty}× ${it.name}" }, order.specialInstructions)
                             state.edit().putLong("alert_time_${order.id}", System.currentTimeMillis()).apply()
@@ -82,9 +83,9 @@ class OrderAlertService : Service() {
         if (order.status in setOf("SERVED","DELIVERED")) return false
         val progress = runCatching { JSONObject(order.kitchenProgress) }.getOrDefault(JSONObject())
         return when (role) {
-            "WAITER" -> order.status in setOf("NEW","READY","OUT_FOR_DELIVERY")
+            "WAITER" -> order.status in setOf("READY","OUT_FOR_DELIVERY")
             "COUNTER" -> order.status in setOf("NEW","READY")
-            "CHEF" -> order.items.any { progress.optString(it.kitchen, "NEW") != "READY" }
+            "CHEF" -> order.status in setOf("NEW","PREPARING") && order.items.any { progress.optString(it.kitchen, "NEW") != "READY" }
             else -> true
         }
     }
@@ -93,7 +94,7 @@ class OrderAlertService : Service() {
         val launch = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra("pos_order_alert", true).putExtra("order_id", id)
-        val fullScreen = PendingIntent.getActivity(this, id.toInt(), launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val openOrder = PendingIntent.getActivity(this, id.toInt(), launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val ackIntent = Intent(this, OrderAlertService::class.java).setAction(ACTION_ACK)
             .putExtra("id", id).putExtra("signature", signature)
         val ack = PendingIntent.getService(this, (id xor 0x5A5A).toInt(), ackIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -103,26 +104,25 @@ class OrderAlertService : Service() {
             .setContentTitle("NEW POS ORDER • $role")
             .setContentText(body.take(220))
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(fullScreen, true)
-            .setContentIntent(fullScreen)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setContentIntent(openOrder)
             .addAction(0, "ACKNOWLEDGE", ack)
-            .setOngoing(true).setAutoCancel(false).build()
+            .setOngoing(false).setAutoCancel(true).build()
         getSystemService(NotificationManager::class.java).notify(id.toInt(), notification)
-        val power = getSystemService(POWER_SERVICE) as PowerManager
-        @Suppress("DEPRECATION")
-        val lock = power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "VoicePOS:OrderAlert")
-        if (!lock.isHeld) lock.acquire(12_000L)
     }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel(CHANNEL, "Urgent order alerts", NotificationManager.IMPORTANCE_HIGH)
-            channel.description = "Urgent waiter, kitchen and counter order alerts"
-            channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java)
+            val channel = NotificationChannel(CHANNEL, "Order updates", NotificationManager.IMPORTANCE_DEFAULT)
+            channel.description = "Quiet updates for new and changing restaurant orders"
+            channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            manager.createNotificationChannel(channel)
+            val service = NotificationChannel(SERVICE_CHANNEL, "Background service", NotificationManager.IMPORTANCE_LOW)
+            service.description = "Keeps order synchronization active"
+            manager.createNotificationChannel(service)
         }
     }
 
