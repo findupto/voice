@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 @Composable private fun RangeChips(selected:Int,set:(Int)->Unit){Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("Today","7 Days","30 Days","All").forEachIndexed{i,t->FilterChip(selected==i,{set(i)},label={Text(t)})}}}
 @Composable fun EnhancedMenuPage(menu:List<MenuItem>,store:Store,refresh:()->Unit,scan:()->Unit,exportMenu:()->Unit,importMenu:()->Unit,addToCart:(MenuItem)->Unit){var edit by remember{mutableStateOf<MenuItem?>(null)};var add by remember{mutableStateOf(false)};var query by remember{mutableStateOf("")};val shown=menu.filter{query.isBlank()||it.name.contains(query,true)||it.variant.contains(query,true)||it.size.contains(query,true)};Column(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){Button({add=true},Modifier.weight(1f)){Text("＋ ADD")};OutlinedButton(importMenu,Modifier.weight(1f)){Text("IMPORT CSV")};OutlinedButton(exportMenu,Modifier.weight(1f)){Text("EXPORT CSV")}};OutlinedButton(scan,Modifier.fillMaxWidth()){Text("SMART SCAN MENU • IMAGE / PDF / DOCX")};OutlinedTextField(query,{query=it},Modifier.fillMaxWidth(),label={Text("Search products")},singleLine=true);Text("${shown.size} products • tap to add; edit price or remove from here",style=MaterialTheme.typography.bodySmall);LazyColumn{items(shown,key={it.id}){m->Card(Modifier.fillMaxWidth().padding(vertical=3.dp)){Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f).clickable{addToCart(m)}){Text(m.name,fontWeight=FontWeight.SemiBold);Text(listOf(m.variant,m.size).filter(String::isNotBlank).joinToString(" • "));Text(money(m.price))};TextButton({edit=m}){Text("EDIT")};TextButton({store.removeMenuItem(m.id);refresh()}){Text("DELETE")}}}}}};if(add)ProductEditor(null,{store.addMenuItem(it);add=false;refresh()}){add=false};edit?.let{ProductEditor(it,{store.updateMenuItem(it);edit=null;refresh()}){edit=null}}}
 @Composable private fun ProductEditor(item:MenuItem?,save:(MenuItem)->Unit,close:()->Unit){var n by remember(item){mutableStateOf(item?.name?:"")};var v by remember(item){mutableStateOf(item?.variant?:"")};var s by remember(item){mutableStateOf(item?.size?:"")};var p by remember(item){mutableStateOf(item?.price?.toString() ?: "")};var kitchen by remember(item){mutableStateOf(item?.kitchen?: "FAST_FOOD")};AlertDialog(onDismissRequest=close,title={Text(if(item==null)"Add Product" else "Edit Product")},text={Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(n,{n=it},label={Text("Product")},singleLine=true);OutlinedTextField(v,{v=it},label={Text("Variant")},singleLine=true);OutlinedTextField(s,{s=it},label={Text("Size")},singleLine=true);Text("Kitchen station");var expanded by remember{mutableStateOf(false)};Box{OutlinedButton(onClick={expanded=true},modifier=Modifier.fillMaxWidth()){Text(kitchen.replace("_"," "))};DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}){listOf("FAST_FOOD","GRILLED","MILK_SHAKES","TEA_COFFEE").forEach{station->DropdownMenuItem(text={Text(station.replace("_"," "))},onClick={kitchen=station;expanded=false})}}};OutlinedTextField(p,{p=normalizeNumericInput(it,true)},label={Text("Price")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),singleLine=true)}},confirmButton={TextButton(onClick={val price=p.toDoubleOrNull();if(n.isNotBlank()&&price!=null)save(item?.copy(name=n.trim(),variant=v.trim(),size=s.trim(),price=price,kitchen=kitchen)?:MenuItem(System.currentTimeMillis(),n.trim(),price,v.trim(),s.trim(),kitchen))}){Text("SAVE")}},dismissButton={TextButton(onClick=close){Text("CANCEL")}})}
@@ -31,8 +32,34 @@ import androidx.compose.ui.unit.dp
     val received=collected.sumOf{it.amount}
     val outstanding=store.dueTotal()
     val rangeName=listOf("Today","7 Days","30 Days","All").getOrElse(range){"All"}
+    val context=LocalContext.current
+    val inventory=remember(context){InventoryStore(context)}
+    val lowStock=inventory.lowStock()
+    val activeOrders=store.pending().filter{it.status !in setOf("SERVED","DELIVERED")}
+    val overdueOrders=activeOrders.filter{System.currentTimeMillis()-it.time>=15*60*1000L}
+    val todayStart=java.util.Calendar.getInstance().apply{set(java.util.Calendar.HOUR_OF_DAY,0);set(java.util.Calendar.MINUTE,0);set(java.util.Calendar.SECOND,0);set(java.util.Calendar.MILLISECOND,0)}.timeInMillis
+    val todaySales=sales.filter{it.time>=todayStart}.sumOf{it.total}
+    val todayExpenses=expenses.filter{it.time>=todayStart}.sumOf{it.amount}
+    val dueTotal=store.dues().sumOf{it.balance}
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
-        Text("Business Analysis",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+        Text("Business Control Center",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)){
+            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+                Text("LIVE BUSINESS PULSE",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Today's sales");Text(money(todaySales),fontWeight=FontWeight.Bold)}
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Today's expenses");Text(money(todayExpenses),fontWeight=FontWeight.Bold)}
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Active orders");Text(activeOrders.size.toString(),fontWeight=FontWeight.Bold)}
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Customer dues");Text(money(dueTotal),fontWeight=FontWeight.Bold)}
+                HorizontalDivider()
+                Text("ATTENTION REQUIRED",fontWeight=FontWeight.Bold)
+                if(lowStock.isEmpty()&&overdueOrders.isEmpty()&&dueTotal<=0.005) Text("No urgent business alerts.")
+                lowStock.take(5).forEach{Text("• Low stock: ${it.name} (${it.quantity} ${it.unit} left; minimum ${it.minimum})",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
+                overdueOrders.take(5).forEach{Text("• Delayed order #${it.id}: ${((System.currentTimeMillis()-it.time)/60000L)} min • ${it.status}",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
+                if(dueTotal>0.005) Text("• Follow up on outstanding customer payments.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                Text("Stock and order alerts update from data saved on this device.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text("Business Analysis",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
         RangeChips(range){range=it}
         Text("${ss.size} sales • ${es.size} expenses",style=MaterialTheme.typography.bodySmall)
         Stat("Total Sales",sv)
