@@ -108,6 +108,25 @@ class InventoryStore(context: Context) {
         prefs.edit().putString("recipes", root.toString()).apply()
         return true
     }
+    /** Checks all recipe requirements together before a sale is finalized. */
+    fun insufficientForSale(saleItems: List<SaleItem>): List<String> {
+        val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
+        val required = linkedMapOf<String, Double>()
+        val stockByKey = items().associateBy { canonicalProductKey(it.name) }
+        saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
+            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { component ->
+                val key = canonicalProductKey(component.stockName)
+                val stock = stockByKey[key] ?: return@forEach
+                val amount = quantityInStockUnit(component.quantity, component.unit, stock.unit) ?: return@forEach
+                required[key] = (required[key] ?: 0.0) + amount * sold.qty
+            }
+        }
+        return required.mapNotNull { (key, amount) ->
+            val stock = stockByKey[key] ?: return@mapNotNull null
+            if (stock.quantity + 1e-9 < amount) "${stock.name}: need ${"%.2f".format(amount)} ${stock.unit}, available ${"%.2f".format(stock.quantity)}" else null
+        }
+    }
+
     @Synchronized fun consumeSale(saleId: Long, saleItems: List<SaleItem>): Boolean {
         if (saleId <= 0L) return false
         val processed = JSONArray(prefs.getString("consumed_sales", "[]"))
