@@ -51,6 +51,16 @@ This is an incremental workflow foundation rather than a certified enterprise de
 - Financial reconciliation keeps the most recent paid sale balance, retains settled dues for sync, rebuilds due paid amounts from the merged payment ledger, and prefers closed shifts over stale open copies.
 - The sales report should be read from the main device after staff devices have synchronized.
 
+## Inventory and recipe stock ledger
+
+- Ingredient records track units, on-hand quantity, low-stock threshold, average purchase cost, and last update time.
+- Recipe lines map normalized menu product names to ingredient quantities. Sales deduct recipe quantities automatically when a matching recipe is configured.
+- A sale is rejected by the Store layer if configured recipe requirements exceed available stock; unconfigured products continue through the existing sale flow.
+- Stock receipts and adjustments are recorded as movements with reason, reference, staff attribution, and timestamp. Manual item edits cannot directly overwrite on-hand quantity; use stock movements instead.
+- Sale deductions are idempotent by sale ID, preventing duplicate stock depletion during retries and multi-device backup merges.
+- Inventory, recipes, stock movements, and deduction markers are included in business backups and merged during LAN sync. Older backup files remain importable.
+- Low-stock and inventory valuation queries are available to the app layer. This commit adds the data/ledger foundation; a dedicated inventory management screen and purchase-order UI remain follow-up work.
+
 ## Backup
 
 The existing JSON business backup remains available from Settings. For a central copy, export it from the owner/server phone after synchronizing staff devices.
