@@ -51,7 +51,9 @@ fun StaffCommunicationDialog(store: Store, onClose: () -> Unit) {
         title = { Text("Staff communication") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(min = 300.dp, max = 520.dp)) {
-                OutlinedTextField(value = host, onValueChange = { host = it.trim(); prefs.edit().putString("owner_ip", it.trim()).apply() }, modifier = Modifier.fillMaxWidth(), label = { Text("Admin server address") }, singleLine = true)\n                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)\n                if (token.isBlank()) Text("Sign in with your staff PIN first. The team chat uses your staff session.", color = MaterialTheme.colorScheme.error)
+                OutlinedTextField(value = host, onValueChange = { host = it.trim(); prefs.edit().putString("owner_ip", it.trim()).apply() }, modifier = Modifier.fillMaxWidth(), label = { Text("Admin server address") }, singleLine = true)
+                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                if (token.isBlank()) Text("Sign in with your staff PIN first. The team chat uses your staff session.", color = MaterialTheme.colorScheme.error)
                 LazyColumn(Modifier.weight(1f, fill = true), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(messages, key = { it.id }) { item ->
                         Card(Modifier.fillMaxWidth()) {
