@@ -192,7 +192,6 @@ class InventoryStore(context: Context) {
             logMovement(stock[index].name, -amount, "Sale: recipe consumption", stock[index].id, "sale:$saleId:${stock[index].id}")
         }
         processed.put(saleId)
-        while (processed.length() > 10000) processed.remove(0)
         prefs.edit().putString("consumed_sales", processed.toString()).apply()
         return true
     }
@@ -203,7 +202,6 @@ class InventoryStore(context: Context) {
         a.put(JSONObject().put("id", movementId).put("stockId", stockId).put("referenceId", movementId.substringBeforeLast(':', ""))
             .put("time", System.currentTimeMillis()).put("name", name).put("quantity", quantity).put("reason", reason)
             .put("actor", prefs.getString("staff_name", "").orEmpty()))
-        while (a.length() > 20000) a.remove(0)
         prefs.edit().putString("movements", a.toString()).apply()
     }
     private fun migrateLegacyMovementBaseline() {
@@ -233,7 +231,7 @@ class InventoryStore(context: Context) {
         for (source in listOf(left.optJSONArray("items") ?: JSONArray(), right.optJSONArray("items") ?: JSONArray())) for (i in 0 until source.length()) {
             val item = source.optJSONObject(i) ?: continue
             val id = item.optLong("id"); val previous = mergedItems[id]
-            if (previous == null || item.optLong("updatedAt") >= previous.optLong("updatedAt")) mergedItems[id] = JSONObject(item.toString())
+            if (previous == null || (item.has("baseQuantity") && !previous.has("baseQuantity")) || (item.has("baseQuantity") == previous.has("baseQuantity") && item.optLong("updatedAt") >= previous.optLong("updatedAt"))) mergedItems[id] = JSONObject(item.toString())
         }
         val movements = linkedMapOf<String, JSONObject>()
         for (source in listOf(left.optJSONArray("movements") ?: JSONArray(), right.optJSONArray("movements") ?: JSONArray())) for (i in 0 until source.length()) {
@@ -257,7 +255,7 @@ class InventoryStore(context: Context) {
         }
         val consumed = linkedSetOf<Long>()
         for (source in listOf(left.optJSONArray("consumedSales") ?: JSONArray(), right.optJSONArray("consumedSales") ?: JSONArray())) for (i in 0 until source.length()) source.optLong(i).takeIf { it > 0L }?.let { consumed.add(it) }
-        val movementArray = JSONArray().apply { movements.values.sortedBy { it.optLong("time") }.takeLast(20000).forEach { put(it) } }
+        val movementArray = JSONArray().apply { movements.values.sortedBy { it.optLong("time") }.forEach { put(it) } }
         val movementTotals = linkedMapOf<Long, Double>()
         for (i in 0 until movementArray.length()) {
             val movement = movementArray.optJSONObject(i) ?: continue; val stockId = movement.optLong("stockId", 0L)
