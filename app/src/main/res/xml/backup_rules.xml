@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="voice_staff_auth.xml" />
+    <exclude domain="sharedpref" path="voice_local_network.xml" />
+    <exclude domain="sharedpref" path="voice_staff_messages.xml" />
+</full-backup-content>
