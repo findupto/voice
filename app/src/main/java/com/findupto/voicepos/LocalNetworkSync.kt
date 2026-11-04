@@ -124,6 +124,22 @@ object LocalNetworkSync {
   private data class LoginAttempt(var failures:Int=0,var blockedUntil:Long=0L)
   private val loginAttempts=ConcurrentHashMap<String,LoginAttempt>()
   private val authPrefs=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
+  init { restoreSessions() }
+  private fun restoreSessions() {
+   val saved=runCatching{JSONObject(authPrefs.getString("sessions","{}")?:"{}")}.getOrDefault(JSONObject())
+   val now=System.currentTimeMillis()
+   saved.keys().forEach { key -> runCatching {
+    val item=saved.getJSONObject(key);val expires=item.getLong("expiresAt")
+    if(expires>now)sessions[key]=StaffSession(item.getString("name"),item.getString("role"),expires)
+   } }
+   persistSessions()
+  }
+  @Synchronized private fun persistSessions() {
+   val now=System.currentTimeMillis();val saved=JSONObject()
+   sessions.entries.removeIf { it.value.expiresAt<=now }
+   sessions.forEach { (key,value) -> saved.put(key,JSONObject().put("name",value.name).put("role",value.role).put("expiresAt",value.expiresAt)) }
+   authPrefs.edit().putString("sessions",saved.toString()).apply()
+  }
   private fun accounts()=runCatching{JSONObject(authPrefs.getString("accounts","{}")?: "{}")}.getOrDefault(JSONObject())
   private fun hex(bytes:ByteArray)=bytes.joinToString(""){"%02x".format(it)}
   private fun unhex(value:String)=value.chunked(2).map{it.toInt(16).toByte()}.toByteArray()
@@ -168,7 +184,7 @@ object LocalNetworkSync {
       }
       synchronized(attempt){attempt.failures=0;attempt.blockedUntil=0L}
       val key=hex(ByteArray(32).also{SecureRandom().nextBytes(it)})
-      val role=account.getString("role");sessions[key]=StaffSession(account.getString("name"),role,System.currentTimeMillis()+43200000L)
+      val role=account.getString("role");sessions[key]=StaffSession(account.getString("name"),role,System.currentTimeMillis()+30L*24L*60L*60L*1000L);persistSessions()
       json(Response.Status.OK,JSONObject().put("session",key).put("name",account.getString("name")).put("role",role))
      }
      session.uri=="/staff/enroll"&&session.method==Method.POST -> {
