@@ -86,6 +86,8 @@ object LocalNetworkSync {
  private data class StaffSession(val name:String,val role:String,val expiresAt:Long)
  private class PosLanServer(private val context:Context,private val store:Store,private val secret:String):NanoHTTPD("0.0.0.0",PORT){
   private val sessions=ConcurrentHashMap<String,StaffSession>()
+  private data class LoginAttempt(var failures:Int=0,var blockedUntil:Long=0L)
+  private val loginAttempts=ConcurrentHashMap<String,LoginAttempt>()
   private val authPrefs=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
   private fun accounts()=runCatching{JSONObject(authPrefs.getString("accounts","{}")?: "{}")}.getOrDefault(JSONObject())
   private fun hex(bytes:ByteArray)=bytes.joinToString(""){"%02x".format(it)}
@@ -114,10 +116,22 @@ object LocalNetworkSync {
      session.uri=="/staff/login"&&session.method==Method.POST -> {
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
-      val account=accounts().optJSONObject(name.lowercase())?:throw IllegalArgumentException("Staff account not found")
-      require(account.optBoolean("active",true)){"This staff account is disabled"}
+      val attemptKey=name.lowercase()
+      val attempt=loginAttempts.computeIfAbsent(attemptKey){LoginAttempt()}
+      synchronized(attempt){
+       require(System.currentTimeMillis()>=attempt.blockedUntil){"Too many incorrect PIN attempts. Try again in a minute."}
+      }
+      val account=accounts().optJSONObject(attemptKey)
+      if(account==null||!account.optBoolean("active",true)){
+       synchronized(attempt){attempt.failures++;if(attempt.failures>=5){attempt.failures=0;attempt.blockedUntil=System.currentTimeMillis()+60_000L}}
+       throw IllegalArgumentException("Staff account not found or disabled")
+      }
       val actual=hashPin(pin,unhex(account.getString("salt")))
-      require(MessageDigest.isEqual(actual.toByteArray(),account.getString("hash").toByteArray())){"Incorrect staff PIN"}
+      if(!MessageDigest.isEqual(actual.toByteArray(),account.getString("hash").toByteArray())){
+       synchronized(attempt){attempt.failures++;if(attempt.failures>=5){attempt.failures=0;attempt.blockedUntil=System.currentTimeMillis()+60_000L}}
+       throw IllegalArgumentException("Incorrect staff PIN")
+      }
+      synchronized(attempt){attempt.failures=0;attempt.blockedUntil=0L}
       val key=hex(ByteArray(32).also{SecureRandom().nextBytes(it)})
       val role=account.getString("role");sessions[key]=StaffSession(account.getString("name"),role,System.currentTimeMillis()+43200000L)
       json(Response.Status.OK,JSONObject().put("session",key).put("name",account.getString("name")).put("role",role))
@@ -134,7 +148,10 @@ object LocalNetworkSync {
       authPrefs.edit().putString("accounts",a.toString()).apply()
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
      }
-     session.uri=="/orders"&&session.method==Method.GET -> json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
+     session.uri=="/orders"&&session.method==Method.GET -> {
+      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view live orders"}
+      json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
+     }
      session.uri=="/orders"&&session.method==Method.POST -> {
       require(staffSession(session)?.role in setOf("WAITER","OWNER","ADMIN")){"Only a waiter can submit orders"}
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
