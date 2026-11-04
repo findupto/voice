@@ -50,6 +50,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
       val result=LocalNetworkSync.loginStaff(ip,name,pin)
       prefs.edit().putString("staff_session",result.getString("session")).apply()
       store.setStaffSession(result.getString("name"),result.getString("role"))
+      PosBackgroundSync.enqueueNow(context)
       "Welcome, ${result.getString("name")}."
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
@@ -62,7 +63,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
     OutlinedTextField(name,{name=it},label={Text("Owner name")},singleLine=true,modifier=Modifier.fillMaxWidth())
     OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("Create owner PIN (4–8 digits)")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
     Button(enabled=!busy&&ip.isNotBlank()&&ownerCode.isNotBlank()&&name.isNotBlank()&&pin.length in 4..8,onClick={
-     runTask({LocalNetworkSync.testConnection(ip);LocalNetworkSync.setupOwner(ip,ownerCode,name,pin);val result=LocalNetworkSync.loginStaff(ip,name,pin);prefs.edit().putString("staff_session",result.getString("session")).putString("owner_ip",ip).apply();store.setStaffSession(result.getString("name"),result.getString("role")); "Owner account created. Signed in as ${result.getString("name")}."}){onSaved()}
+     runTask({LocalNetworkSync.testConnection(ip);LocalNetworkSync.setupOwner(ip,ownerCode,name,pin);val result=LocalNetworkSync.loginStaff(ip,name,pin);prefs.edit().putString("staff_session",result.getString("session")).putString("owner_ip",ip).apply();store.setStaffSession(result.getString("name"),result.getString("role"));PosBackgroundSync.enqueueNow(context); "Owner account created. Signed in as ${result.getString("name")}."}){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SETTING UP…" else "CREATE OWNER ACCOUNT")}
     TextButton(onClick={mode="SIGN_IN"}){Text("BACK TO SIGN IN")}
    }else{
