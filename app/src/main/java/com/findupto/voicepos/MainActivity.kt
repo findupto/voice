@@ -70,6 +70,23 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    override fun onResume() {
+        super.onResume()
+        // Reconcile the Admin/Owner server and saved staff connection whenever the app returns.
+        runCatching {
+            val currentStore = if (::store.isInitialized) store else Store(this)
+            if (currentStore.staffRole() in setOf("ADMIN", "OWNER")) {
+                LocalNetworkSync.start(this, currentStore)
+            }
+            val prefs = getSharedPreferences("voice_local_network", MODE_PRIVATE)
+            if (prefs.getString("owner_ip", "").orEmpty().isNotBlank() &&
+                prefs.getString("staff_session", "").orEmpty().isNotBlank()) {
+                PosBackgroundSync.enqueueNow(this)
+            }
+            startOrderAlerts()
+        }
+    }
+
     private fun startOrderAlerts(){ runCatching { androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, OrderAlertService::class.java)) } }
 
     private fun scanDiscountCardImage(uri: Uri) {
