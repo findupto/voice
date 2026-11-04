@@ -47,6 +47,7 @@ This is an incremental workflow foundation rather than a certified enterprise de
 - New order IDs include a per-install device component, reducing collisions between staff phones.
 - Repeated pending-order and sale writes with the same ID are ignored.
 - Central sync merges sales, pending orders, payments, expenses, shifts, dues, and event records by identity instead of replacing the server's whole dataset.
+- Financial reconciliation keeps the most recent paid sale balance, retains settled dues for sync, rebuilds due paid amounts from the merged payment ledger, and prefers closed shifts over stale open copies.
 - The sales report should be read from the main device after staff devices have synchronized.
 
 ## Backup
