@@ -183,6 +183,22 @@ class Store(private val context:Context){
   }
   mergeArray("payments"){it.optString("saleId")+":"+it.optString("amount")+":"+it.optString("method")+":"+it.optString("time")}
   run {
+   val paidBySale=linkedMapOf<String,Double>()
+   val payments=current.optJSONArray("payments")?:org.json.JSONArray()
+   for(i in 0 until payments.length()){
+    val payment=payments.optJSONObject(i)?:continue
+    val key=payment.optString("saleId")
+    paidBySale[key]=(paidBySale[key]?:0.0)+payment.optDouble("amount",0.0)
+   }
+   val sales=current.optJSONArray("sales")?:org.json.JSONArray()
+   for(i in 0 until sales.length()){
+    val sale=sales.optJSONObject(i)?:continue
+    val total=sale.optDouble("total",0.0).coerceAtLeast(0.0)
+    val paid=maxOf(sale.optDouble("paidAmount",0.0),paidBySale[sale.optString("id")]?:0.0).coerceIn(0.0,total)
+    sale.put("paidAmount",paid).put("dueAmount",(total-paid).coerceAtLeast(0.0))
+   }
+  }
+  run {
    val byId=linkedMapOf<String,org.json.JSONObject>()
    for(source in listOf(current.optJSONArray("dues")?:org.json.JSONArray(),incoming.optJSONArray("dues")?:org.json.JSONArray())) {
     for(i in 0 until source.length()) {
