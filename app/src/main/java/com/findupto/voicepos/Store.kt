@@ -74,7 +74,7 @@ class Store(private val context:Context){
  fun orderAudit():org.json.JSONArray=runCatching{org.json.JSONArray(p.getString("order_audit","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
  fun setStaffSession(name:String,role:String){p.edit().putString("staff_name",name.trim()).putString("staff_role",role.uppercase()).apply()}
  fun staffName()=p.getString("staff_name","")?:""
- fun staffRole()=p.getString("staff_role","OWNER")?:"OWNER"
+ fun staffRole()=p.getString("staff_role","GUEST")?:"GUEST"
  fun queueOfflineDeliveryUpdate(id:Long,status:String,actor:String){val a=runCatching{org.json.JSONArray(p.getString("offline_delivery_queue","[]")?:"[]")}.getOrDefault(org.json.JSONArray());a.put(org.json.JSONObject().put("id",id).put("status",status).put("actor",actor).put("time",System.currentTimeMillis()));p.edit().putString("offline_delivery_queue",a.toString()).apply()}
  fun offlineDeliveryUpdates()=runCatching{org.json.JSONArray(p.getString("offline_delivery_queue","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
  fun removeOfflineDeliveryUpdate(index:Int){val old=offlineDeliveryUpdates();val next=org.json.JSONArray();for(i in 0 until old.length())if(i!=index)next.put(old.getJSONObject(i));p.edit().putString("offline_delivery_queue",next.toString()).apply()}
