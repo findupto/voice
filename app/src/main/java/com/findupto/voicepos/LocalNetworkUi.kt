@@ -35,6 +35,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
             if (parts.size == 2 && parts[0] == "VOICEPOS-PAIR" && parts[1].isNotBlank()) {
                 pairedAddress = parts[1]
                 prefs.edit().putString("owner_ip", parts[1]).apply()
+                PosBackgroundSync.enqueueNow(context)
                 message = "Paired with main device at $pairedAddress. Staff can now sign in using their own name and PIN."
                 Toast.makeText(context, "Paired with main POS device", Toast.LENGTH_SHORT).show()
             } else message = "Invalid pairing QR. Scan the QR shown by the Owner device."
