@@ -1,6 +1,8 @@
 package com.findupto.voicepos
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -61,10 +63,10 @@ fun PremiumQuickSale(
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Current Order", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Row {
-                        if (cart.isNotEmpty()) TextButton(onClick = discount) { Text(if (discountAmount > 0) "CHANGE DISCOUNT" else "DISCOUNT") }
-                        if (cart.isNotEmpty()) TextButton(onClick = hold) { Text("HOLD") }
-                        if (cart.isNotEmpty()) TextButton(onClick = clear) { Text("Clear") }
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.End) {
+                        if (cart.isNotEmpty()) TextButton(onClick = discount, contentPadding = PaddingValues(horizontal = 5.dp)) { Text(if (discountAmount > 0) "DISCOUNT" else "DISC") }
+                        if (cart.isNotEmpty()) TextButton(onClick = hold, contentPadding = PaddingValues(horizontal = 5.dp)) { Text("HOLD") }
+                        if (cart.isNotEmpty()) TextButton(onClick = clear, contentPadding = PaddingValues(horizontal = 5.dp)) { Text("CLEAR") }
                     }
                 }
                 if (cart.isEmpty()) EmptyState(Icons.Default.ShoppingCart, "No items", "Use ADD PRODUCTS")
