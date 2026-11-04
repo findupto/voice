@@ -5,6 +5,7 @@ import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.io.ByteArrayOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URL
@@ -51,16 +52,34 @@ object LocalNetworkSync {
   require(port!=null&&port in 1..65535){"Enter a valid local port."}
   return "http://$address:$port$path"
  }
+ private fun readLimited(input:java.io.InputStream,maxBytes:Int=8_000_000):String {
+  val output=ByteArrayOutputStream()
+  val buffer=ByteArray(8192)
+  var total=0
+  while(true){
+   val count=input.read(buffer)
+   if(count<0)break
+   total+=count
+   require(total<=maxBytes){"Server response exceeds the 8 MB limit"}
+   output.write(buffer,0,count)
+  }
+  return output.toString(Charsets.UTF_8.name())
+ }
  private fun request(ip:String,token:String,path:String,method:String="GET",body:String?=null,ownerCode:Boolean=false):String {
+  val bytes=body?.toByteArray(Charsets.UTF_8)
+  require(bytes==null||bytes.size<=8_000_000){"Request exceeds the 8 MB limit"}
   val c=URL(endpoint(ip,path)).openConnection() as HttpURLConnection
   try {
    c.connectTimeout=7000;c.readTimeout=10000;c.requestMethod=method
+   c.instanceFollowRedirects=false;c.useCaches=false
    c.setRequestProperty(if(ownerCode) "X-POS-Token" else "X-POS-Session",token.trim())
    c.setRequestProperty("Accept","application/json")
-   if(body!=null){val bytes=body.toByteArray(Charsets.UTF_8);c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setFixedLengthStreamingMode(bytes.size);c.outputStream.use{it.write(bytes)}}
+   c.setRequestProperty("Cache-Control","no-store")
+   c.setRequestProperty("Connection","close")
+   if(bytes!=null){c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setFixedLengthStreamingMode(bytes.size);c.outputStream.use{it.write(bytes)}}
    val status=c.responseCode
    val stream=if(status in 200..299)c.inputStream else c.errorStream
-   val response=stream?.bufferedReader()?.use{it.readText()}?.take(8_000_000).orEmpty()
+   val response=stream?.use{readLimited(it)}.orEmpty()
    if(status !in 200..299)throw IllegalStateException(runCatching{JSONObject(response).optString("error")}.getOrNull()?.takeIf{it.isNotBlank()}?:"Server rejected request ($status)")
    return response
   } finally { c.disconnect() }
@@ -111,6 +130,10 @@ object LocalNetworkSync {
  fun loginStaff(ip:String,name:String,pin:String):JSONObject=JSONObject(request(ip,"","/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
  fun enrollStaff(ip:String,ownerSession:String,name:String,pin:String,role:String):String=request(ip,ownerSession,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role",role).toString())
  fun setupOwner(ip:String,ownerCode:String,name:String,pin:String):String=request(ip,ownerCode,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role","OWNER").toString(),true)
+ fun listStaff(ip:String,ownerSession:String):JSONArray=JSONArray(request(ip,ownerSession,"/staff/accounts"))
+ fun setStaffActive(ip:String,ownerSession:String,name:String,active:Boolean):String=request(ip,ownerSession,"/staff/accounts/status","POST",JSONObject().put("name",name).put("active",active).toString())
+ fun resetStaffPin(ip:String,ownerSession:String,name:String,newPin:String):String=request(ip,ownerSession,"/staff/accounts/pin","POST",JSONObject().put("name",name).put("pin",newPin).toString())
+ fun logoutStaff(ip:String,session:String):String=request(ip,session,"/staff/logout","POST",JSONObject().put("ok",true).toString())
  private fun orderJson(s:PendingSale)=JSONObject().apply{
   put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt);put("kitchenProgress",s.kitchenProgress)
   put("items",JSONArray().apply{s.items.forEach{put(JSONObject().put("name",it.name).put("qty",it.qty).put("price",it.price).put("kitchen",it.kitchen))}})
@@ -123,6 +146,7 @@ object LocalNetworkSync {
   private val authPrefs=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
   private val messagePrefs=context.getSharedPreferences("voice_staff_messages",Context.MODE_PRIVATE)
   private val messageLock=Any()
+  private val accountLock=Any()
   init { restoreSessions() }
   private fun restoreSessions() {
    val saved=runCatching{JSONObject(authPrefs.getString("sessions","{}")?:"{}")}.getOrDefault(JSONObject())
@@ -148,7 +172,12 @@ object LocalNetworkSync {
   }
   private fun staffSession(s:IHTTPSession):StaffSession? {
    val key=s.headers["x-pos-session"].orEmpty();val found=sessions[key]?:return null
-   if(found.expiresAt<System.currentTimeMillis()){sessions.remove(key);return null};return found
+   if(found.expiresAt<System.currentTimeMillis()){sessions.remove(key);persistSessions();return null}
+   val account=accounts().optJSONObject(found.name.lowercase())
+   if(account==null||!account.optBoolean("active",true)||account.optString("role")!=found.role){
+    sessions.remove(key);persistSessions();return null
+   }
+   return found
   }
   private fun isOwner(s:IHTTPSession)=staffSession(s)?.role=="OWNER"
   override fun serve(session:IHTTPSession):Response {
@@ -192,11 +221,61 @@ object LocalNetworkSync {
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
       if(firstSetup)require(role=="OWNER"){"First account must be OWNER"}
-      val a=accounts();val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
-      val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
-      a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
-      authPrefs.edit().putString("accounts",a.toString()).apply()
+      synchronized(accountLock){
+       val a=accounts();val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
+       val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
+       a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
+       authPrefs.edit().putString("accounts",a.toString()).commit()
+      }
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
+     }
+     session.uri=="/staff/accounts"&&session.method==Method.GET -> {
+      require(staffSession(session)?.role=="OWNER"){"Only the owner can view staff accounts"}
+      val result=JSONArray()
+      synchronized(accountLock){
+       val a=accounts();a.keys().forEach{key->val item=a.optJSONObject(key)?:return@forEach
+        result.put(JSONObject().put("name",item.optString("name")).put("role",item.optString("role")).put("active",item.optBoolean("active",true)))
+       }
+      }
+      json(Response.Status.OK,result)
+     }
+     session.uri=="/staff/accounts/status"&&session.method==Method.POST -> {
+      require(staffSession(session)?.role=="OWNER"){"Only the owner can change staff access"}
+      val x=JSONObject(readBody(session));val name=x.optString("name").trim();val active=x.getBoolean("active")
+      require(name.isNotBlank()){"Staff name is required"}
+      synchronized(accountLock){
+       val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
+       if(!active&&target.optString("role")=="OWNER"){
+        val activeOwners=a.keys().count{candidate->val item=a.optJSONObject(candidate);item?.optString("role")=="OWNER"&&item.optBoolean("active",true)}
+        require(activeOwners>1){"The last active owner cannot be disabled"}
+       }
+       target.put("active",active);authPrefs.edit().putString("accounts",a.toString()).commit()
+       if(!active){
+        sessions.entries.removeIf{it.value.name.equals(name,true)}
+        persistSessions()
+       }
+      }
+      json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("active",active))
+     }
+     session.uri=="/staff/accounts/pin"&&session.method==Method.POST -> {
+      require(staffSession(session)?.role=="OWNER"){"Only the owner can reset staff PINs"}
+      val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
+      require(name.isNotBlank()&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
+      synchronized(accountLock){
+       val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
+       val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
+       target.put("salt",hex(salt)).put("hash",hashPin(pin,salt))
+       authPrefs.edit().putString("accounts",a.toString()).commit()
+       sessions.entries.removeIf{it.value.name.equals(name,true)}
+       persistSessions()
+      }
+      json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("sessionsRevoked",true))
+     }
+     session.uri=="/staff/logout"&&session.method==Method.POST -> {
+      val key=session.headers["x-pos-session"].orEmpty()
+      require(key.isNotBlank()&&sessions.remove(key)!=null){"Staff session is already signed out"}
+      persistSessions()
+      json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/messages"&&session.method==Method.GET -> {
       require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view communication"}
