@@ -32,7 +32,8 @@ The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/sto
 - The first account must be enrolled as OWNER using the random access code shown on the owner device; predictable shared default PINs are not provisioned.
 - Staff PINs are stored as salted PBKDF2-HMAC-SHA256 hashes. Failed sign-ins are rate-limited, and authenticated sessions expire after 30 days.
 - Owner-only LAN endpoints can list staff accounts, enable or disable an account, reset a staff PIN, and sign out the current session. Disabling an account or resetting its PIN revokes its active sessions. The final active OWNER account cannot be disabled.
-- LAN requests reject redirects and oversized request/response bodies. Offline orders remain queued for WorkManager retry until the owner device accepts them.
+- LAN requests reject redirects and oversized request/response bodies. Offline orders are persisted locally, retried in small batches without blocking new order entry, and retained for WorkManager retry until the owner device accepts them; the queue has a 5,000-order safety limit.
+- Android cloud/device-transfer backups exclude staff PIN hashes, active LAN tokens/sessions, and staff messages. Business data continues to use the app's own validated JSON backup and rotating local backup files.
 - **Transport limitation:** the local POS server currently uses HTTP, not TLS. Use only a trusted private Wi-Fi network or phone hotspot; never expose TCP port 8765 to the public internet or forward it from a router. These controls harden the local workflow but do not provide end-to-end encryption.
 
 ## Restaurant order workflow
