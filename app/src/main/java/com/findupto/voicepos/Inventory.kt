@@ -64,13 +64,14 @@ class InventoryStore(context: Context) {
         prefs.edit().putString("items", a.toString()).apply()
     }
     fun addItem(name: String, category: String, quantity: Double, unit: String, minimum: Double, unitCost: Double): Boolean {
-        if (name.isBlank() || unit.isBlank() || quantity < 0 || minimum < 0 || unitCost < 0) return false
+        if (name.isBlank() || unit.isBlank() || !quantity.isFinite() || !minimum.isFinite() || !unitCost.isFinite() || quantity < 0 || minimum < 0 || unitCost < 0) return false
         if (items().any { canonicalProductKey(it.name) == canonicalProductKey(name) }) return false
         saveItems(items() + InventoryStockItem(System.currentTimeMillis(), name.trim(), category, quantity, unit.trim(), minimum, unitCost))
         logMovement(name.trim(), quantity, "Opening stock")
         return true
     }
-    fun adjustStock(id: Long, delta: Double, reason: String): Boolean {
+    @Synchronized fun adjustStock(id: Long, delta: Double, reason: String): Boolean {
+        if (!delta.isFinite()) return false
         val old = items().firstOrNull { it.id == id } ?: return false
         if (delta == 0.0 || (delta < 0 && old.quantity + delta < 0)) return false
         saveItems(items().map { if (it.id == id) it.copy(quantity = it.quantity + delta) else it })
@@ -116,7 +117,7 @@ class InventoryStore(context: Context) {
         }.getOrNull() }.toList()
     }
     fun addRecipeComponent(productName: String, stockName: String, quantity: Double, unit: String): Boolean {
-        if (productName.isBlank() || stockName.isBlank() || quantity <= 0) return false
+        if (productName.isBlank() || stockName.isBlank() || unit.isBlank() || !quantity.isFinite() || quantity <= 0) return false
         val stock = items().firstOrNull { canonicalProductKey(it.name) == canonicalProductKey(stockName) } ?: return false
         if (quantityInStockUnit(quantity, unit, stock.unit) == null) return false
         val root = JSONObject(prefs.getString("recipes", "{}"))
@@ -161,22 +162,25 @@ class InventoryStore(context: Context) {
         if ((0 until processed.length()).any { processed.optLong(it) == saleId }) return false
         val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
         val stock = items().toMutableList()
+        val required = linkedMapOf<Int, Double>()
         saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
-            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { c ->
-                val i = stock.indexOfFirst { canonicalProductKey(it.name) == canonicalProductKey(c.stockName) }
-                if (i >= 0) {
-                    val used = quantityInStockUnit(c.quantity, c.unit, stock[i].unit) ?: 0.0
-                    stock[i] = stock[i].copy(quantity = stock[i].quantity - used * sold.qty)
-                }
+            if (sold.qty <= 0) return false
+            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { component ->
+                val index = stock.indexOfFirst { canonicalProductKey(it.name) == canonicalProductKey(component.stockName) }
+                if (index < 0) return@forEach
+                val used = quantityInStockUnit(component.quantity, component.unit, stock[index].unit)
+                    ?: return@forEach
+                if (!used.isFinite() || used < 0.0) return false
+                required[index] = (required[index] ?: 0.0) + used * sold.qty
             }
         }
+        // Recheck under the same lock as stock adjustments so a stale pre-check
+        // cannot drive inventory below zero.
+        if (required.any { (index, amount) -> !amount.isFinite() || stock[index].quantity + 1e-9 < amount }) return false
+        required.forEach { (index, amount) -> stock[index] = stock[index].copy(quantity = stock[index].quantity - amount) }
         saveItems(stock)
-        saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
-            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { c ->
-                val stockItem = items().firstOrNull { canonicalProductKey(it.name) == canonicalProductKey(c.stockName) }
-                val used = stockItem?.let { quantityInStockUnit(c.quantity, c.unit, it.unit) } ?: c.quantity
-                logMovement(c.stockName, -used * sold.qty, "Sale: ${sold.name}")
-            }
+        required.forEach { (index, amount) ->
+            logMovement(stock[index].name, -amount, "Sale: recipe consumption")
         }
         processed.put(saleId)
         while (processed.length() > 10000) processed.remove(0)
