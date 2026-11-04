@@ -83,7 +83,7 @@ class Store(private val context:Context){
    tableName=table?:order.tableName)
   replacePending(updated)
   appendOrderAudit(id,actor,role,status,note,now)
-  if(status=="BILLED")removePending(id)
+  if(status=="BILLED"){markOrderCompleted(id);removePending(id)}
   return true
  }
  @Synchronized fun appendOrderAudit(orderId:Long, actor:String, role:String, action:String, detail:String="", at:Long=System.currentTimeMillis()) {
@@ -104,12 +104,38 @@ class Store(private val context:Context){
   all.values.sortedBy{it.optLong("time")}.takeLast(5000).forEach{merged.put(it)}
   p.edit().putString("order_audit",merged.toString()).apply()
  }
- fun reconcileCompletedOrdersFromAudit() {
+ @Synchronized fun markOrderCompleted(id:Long) {
+  if(id<=0L)return
+  val ids=completedOrderIds().toMutableSet()
+  ids.add(id)
+  val saved=org.json.JSONArray()
+  ids.sorted().takeLast(20000).forEach{saved.put(it)}
+  p.edit().putString("completed_order_ids",saved.toString()).commit()
+ }
+ @Synchronized fun mergeCompletedOrderIds(remote:org.json.JSONArray) {
+  val ids=completedOrderIds().toMutableSet()
+  for(i in 0 until remote.length())remote.optLong(i).takeIf{it>0L}?.let{ids.add(it)}
+  val saved=org.json.JSONArray()
+  ids.sorted().takeLast(20000).forEach{saved.put(it)}
+  p.edit().putString("completed_order_ids",saved.toString()).commit()
+ }
+ fun completedOrderIds():Set<Long> = runCatching {
+  val a=org.json.JSONArray(p.getString("completed_order_ids","[]")?:"[]")
+  (0 until a.length()).mapNotNull{i->a.optLong(i).takeIf{it>0L}}.toSet()
+ }.getOrDefault(emptySet())
+ fun completedOrderIdsJson()=org.json.JSONArray().apply{completedOrderIds().sorted().forEach{put(it)}}
+ @Synchronized fun reconcileCompletedOrdersFromAudit() {
+  val ids=completedOrderIds().toMutableSet()
   val completed=orderAudit()
-  val billedIds=(0 until completed.length()).mapNotNull{i->
-   val event=completed.optJSONObject(i)?:return@mapNotNull null
-   event.optLong("orderId").takeIf{it>0L&&event.optString("action")=="BILLED"}
-  }.toSet()
+  for(i in 0 until completed.length()) {
+   val event=completed.optJSONObject(i)?:continue
+   event.optLong("orderId").takeIf{it>0L&&event.optString("action")=="BILLED"}?.let{ids.add(it)}
+  }
+  val saved=org.json.JSONArray()
+  ids.sorted().takeLast(20000).forEach{saved.put(it)}
+  p.edit().putString("completed_order_ids",saved.toString()).commit()
+  if(ids.isNotEmpty())savePending(pending().filterNot{it.id in ids})
+ }
   if(billedIds.isNotEmpty())savePending(pending().filterNot{it.id in billedIds})
  }
  fun orderAudit():org.json.JSONArray=runCatching{org.json.JSONArray(p.getString("order_audit","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
