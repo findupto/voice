@@ -163,13 +163,13 @@ class InventoryStore(context: Context) {
         val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
         val stock = items().toMutableList()
         val required = linkedMapOf<Int, Double>()
-        saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
+        saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach saleLoop@ { sold ->
             if (sold.qty <= 0) return false
-            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { component ->
+            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach componentLoop@ { component ->
                 val index = stock.indexOfFirst { canonicalProductKey(it.name) == canonicalProductKey(component.stockName) }
-                if (index < 0) return@forEach
+                if (index < 0) return@componentLoop
                 val used = quantityInStockUnit(component.quantity, component.unit, stock[index].unit)
-                    ?: return@forEach
+                    ?: return@componentLoop
                 if (!used.isFinite() || used < 0.0) return false
                 required[index] = (required[index] ?: 0.0) + used * sold.qty
             }
