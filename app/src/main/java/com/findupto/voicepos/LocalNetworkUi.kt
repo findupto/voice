@@ -1,42 +1,69 @@
 package com.findupto.voicepos
 
+import android.content.Intent
+import android.graphics.Bitmap
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 
 @Composable
 fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("voice_local_network", 0) }
     var hosting by remember { mutableStateOf(LocalNetworkSync.isRunning()) }
-    var ip by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf(context.getSharedPreferences("voice_local_network",0).getString("staff_session","") ?: "") }
     var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("No internet or cloud account is required.") }
+    var message by remember { mutableStateOf("Connect staff phones to the same Wi-Fi or hotspot, then scan this QR code.") }
+    var pairedAddress by remember { mutableStateOf(prefs.getString("owner_ip", "").orEmpty()) }
     val localIp = remember(hosting) { LocalNetworkSync.ipAddress() }
-    val accessCode = remember { LocalNetworkSync.token(context) }
+    val accessCode = remember(hosting) { LocalNetworkSync.token(context) }
+    val scanner = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val raw = result.data?.getStringExtra(LiveQrScannerActivity.EXTRA_QR_CODE).orEmpty()
+            val parts = raw.split("|")
+            if (parts.size == 3 && parts[0] == "VOICEPOS-PAIR" && parts[1].isNotBlank() && parts[2].isNotBlank()) {
+                pairedAddress = parts[1]
+                prefs.edit().putString("owner_ip", parts[1]).putString("owner_pairing_code", parts[2]).apply()
+                message = "Paired with main device at $pairedAddress. Staff can now sign in using their own name and PIN."
+                Toast.makeText(context, "Paired with main POS device", Toast.LENGTH_SHORT).show()
+            } else message = "Invalid pairing QR. Scan the QR shown by the Owner device."
+        }
+    }
+    val qrBitmap = remember(hosting, localIp, accessCode) {
+        if (!hosting || localIp == "IP unavailable") null else runCatching {
+            val matrix = QRCodeWriter().encode("VOICEPOS-PAIR|$localIp:8765|$accessCode", BarcodeFormat.QR_CODE, 640, 640)
+            Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888).also { bitmap ->
+                for (x in 0 until 640) for (y in 0 until 640) bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }.getOrNull()
+    }
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("LOCAL RESTAURANT NETWORK", fontWeight = FontWeight.Bold) },
+        title = { Text("MAIN DEVICE & QR PAIRING", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Use one mobile as the main data server. Other phones join through the same Wi-Fi or an already-enabled hotspot.")
+                Text("The Owner phone hosts restaurant data. All staff phones must use the same Wi-Fi or hotspot.")
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("MAIN SERVER — THIS DEVICE", fontWeight = FontWeight.Bold)
-                        Text(if (hosting) "Server is running" else "Server is stopped", color = if (hosting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("OWNER — MAIN DEVICE", fontWeight = FontWeight.Bold)
+                        Text(if (hosting) "Main server is running" else "Main server is stopped", color = if (hosting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         if (hosting) {
-                            Text("Server address", style = MaterialTheme.typography.labelMedium)
-                            Text("$localIp:8765", fontWeight = FontWeight.Bold)
-                            Text("Access code", style = MaterialTheme.typography.labelMedium)
-                            SelectionContainer { Text(accessCode, fontWeight = FontWeight.Bold) }
-                            Text("On this phone, create the owner account using 127.0.0.1. Staff phones should enter this address on the sign-in screen and use their own staff name and PIN.", style = MaterialTheme.typography.bodySmall)
+                            Text("Staff: scan this QR code to pair", fontWeight = FontWeight.SemiBold)
+                            qrBitmap?.let { Image(it.asImageBitmap(), "Main device pairing QR code", modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)) }
+                            Text("Address: $localIp:8765", style = MaterialTheme.typography.bodySmall)
+                            SelectionContainer { Text("Pairing code: $accessCode", style = MaterialTheme.typography.labelSmall) }
                         }
                         Button(onClick = {
                             if (hosting) {
@@ -45,38 +72,16 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                                 message = "Main server stopped."
                             } else {
                                 hosting = LocalNetworkSync.start(context, store)
-                                message = if (hosting) "Local server is ready. Keep this app open while staff are connected." else "Could not start server. Check whether port 8765 is already in use."
+                                message = if (hosting) "Main server ready. Show the QR code to staff." else "Could not start server. Check port 8765."
                             }
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (hosting) "STOP MAIN SERVER" else "START MAIN SERVER")
-                        }
+                        }, modifier = Modifier.fillMaxWidth()) { Text(if (hosting) "STOP MAIN SERVER" else "MAKE THIS THE MAIN DEVICE") }
                     }
                 }
                 HorizontalDivider()
-                Text("CONNECT THIS DEVICE TO OWNER", fontWeight = FontWeight.Bold)
-                Text("First connect both phones to the same Wi-Fi or hotspot. Then enter the owner address and sign in from Staff Access.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(value = ip, onValueChange = { ip = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_ip", it).apply() }, label = { Text("Owner phone IP address") }, placeholder = { Text("192.168.1.10") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = code, onValueChange = { code = it; context.getSharedPreferences("voice_local_network", 0).edit().putString("owner_token", it).apply() }, label = { Text("Owner session token (OWNER only)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedButton(onClick = {
-                    if (ip.isBlank() || code.isBlank()) {
-                        message = "Enter the owner's IP address and access code."
-                    } else {
-                        busy = true
-                        message = "Synchronizing…"
-                        Thread {
-                            val result = runCatching { LocalNetworkSync.sync(ip, code, store) }
-                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                busy = false
-                                message = result.getOrElse { "Sync failed: ${it.message}" }
-                                if (result.isSuccess) Toast.makeText(context, "Restaurant data synchronized", Toast.LENGTH_SHORT).show()
-                            }
-                        }.start()
-                    }
-                }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (busy) "SYNCHRONIZING…" else "SYNC WITH MAIN DEVICE")
-                }
+                Text("STAFF DEVICE", fontWeight = FontWeight.Bold)
+                Text(if (pairedAddress.isBlank()) "Scan the Owner's QR code once. Then sign in with your own staff name and PIN." else "Paired address: $pairedAddress")
+                OutlinedButton(onClick = { scanner.launch(Intent(context, LiveQrScannerActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) { Text("SCAN OWNER PAIRING QR") }
                 Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                Text("Staff accounts connect through Staff Access. The sync tool is only for an OWNER session; it is not needed for normal waiter, chef, counter, or rider live orders.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("CLOSE") } }
