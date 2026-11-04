@@ -55,7 +55,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
         title = { Text("MAIN DEVICE & QR PAIRING", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("The Owner phone hosts restaurant data. All staff phones must use the same Wi-Fi or hotspot.")
+                Text("The Owner phone hosts restaurant data. Only the Owner device can start the primary server. Admin and Kitchen Head takeover remains disabled until secure standby replication and leader election are configured. All phones must use the same Wi-Fi or hotspot.")
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("OWNER — MAIN DEVICE", fontWeight = FontWeight.Bold)
@@ -72,7 +72,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                                 message = "Main server stopped."
                             } else {
                                 hosting = LocalNetworkSync.start(context, store)
-                                message = if (hosting) "Main server ready. Show the QR code to staff." else "Could not start server. Check port 8765."
+                                message = if (hosting) "Main server ready. Show the QR code to staff." else "Server not started. Only the Owner device can host the primary server after Owner setup; also check port 8765."
                             }
                         }, modifier = Modifier.fillMaxWidth()) { Text(if (hosting) "STOP MAIN SERVER" else "MAKE THIS THE MAIN DEVICE") }
                     }
