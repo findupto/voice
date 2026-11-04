@@ -265,7 +265,7 @@ object LocalNetworkSync {
       val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
       val role=authenticated.role;val actor=authenticated.name
       val id=x.getLong("id");val status=x.getString("status").uppercase()
-      require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED","OUT_FOR_DELIVERY","DELIVERED")){"Invalid order update"}
+      require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED","OUT_FOR_DELIVERY","DELIVERED","BILLED")){"Invalid order update"}
       val ok=store.updateOrderWorkflow(id,status,actor,role,x.optString("note").take(1000))
       if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Order is missing or the requested workflow transition is not allowed"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
