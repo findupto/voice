@@ -104,8 +104,21 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
       Text("Waiter ${o.waiterName.ifBlank{o.shiftPerson}} • Chef ${o.chefName} • Counter ${o.counterName}",style=MaterialTheme.typography.labelSmall)
       Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
        if((role=="COUNTER"||role=="OWNER"||role=="ADMIN")&&o.status=="NEW")TextButton(onClick={update(o,"ACCEPTED")}){Text("ACCEPT")}
-       if((role=="CHEF"||role=="OWNER"||role=="ADMIN")&&(o.status=="NEW"||o.status=="ACCEPTED"))TextButton(onClick={update(o,"PREPARING")}){Text("START")}
-       if((role=="CHEF"||role=="OWNER"||role=="ADMIN")&&o.status=="PREPARING")Button(onClick={update(o,"READY")}){Text("READY")}
+       if(role=="CHEF"||role=="OWNER"||role=="ADMIN"){
+       val progress=runCatching{org.json.JSONObject(o.kitchenProgress)}.getOrDefault(org.json.JSONObject())
+       o.items.map{it.kitchen}.distinct().forEach{station->
+        val stationItems=o.items.filter{it.kitchen==station}
+        val state=progress.optString(station,"NEW")
+        Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
+         Text("$station • "+stationItems.joinToString{ "${it.qty}× ${it.name}" },style=MaterialTheme.typography.bodySmall)
+         Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
+          if(state=="NEW")TextButton(onClick={scope.launch{runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pushKitchenStatus(ip,code,o.id,station,"PREPARING");LocalNetworkSync.pullOrders(ip,code,store)}}.onSuccess{orders=it;message="$station started"}.onFailure{message=it.message?: "Kitchen update failed"}}}){Text("START")}
+          if(state=="PREPARING")Button(onClick={scope.launch{runCatching{withContext(Dispatchers.IO){LocalNetworkSync.pushKitchenStatus(ip,code,o.id,station,"READY");LocalNetworkSync.pullOrders(ip,code,store)}}.onSuccess{orders=it;message="$station ready"}.onFailure{message=it.message?: "Kitchen update failed"}}}){Text("READY")}
+          Text(state,style=MaterialTheme.typography.labelSmall)
+         }
+        }
+       }
+      }
        if((role=="WAITER"||role=="OWNER"||role=="ADMIN")&&o.status=="READY"&&o.orderType!="DELIVERY")Button(onClick={update(o,"SERVED")}){Text("SERVED")}
        if(role=="RIDER"&&o.orderType=="DELIVERY"&&o.status=="READY")Button(onClick={update(o,"OUT_FOR_DELIVERY")}){Text("PICK UP")}
        if(role=="RIDER"&&o.status=="OUT_FOR_DELIVERY")Button(onClick={update(o,"DELIVERED")}){Text("DELIVERED")}
