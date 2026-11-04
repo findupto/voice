@@ -23,7 +23,7 @@ fun StaffCommunicationDialog(store: Store, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("voice_local_network", 0) }
-    val host = remember { prefs.getString("owner_ip", "").orEmpty() }
+    var host by remember { mutableStateOf(if (LocalNetworkSync.isRunning()) "127.0.0.1" else prefs.getString("owner_ip", "").orEmpty()) }
     val token = remember { prefs.getString("staff_session", "").orEmpty() }
     var messages by remember { mutableStateOf(emptyList<JSONObjectMessage>()) }
     var draft by remember { mutableStateOf("") }
@@ -51,7 +51,7 @@ fun StaffCommunicationDialog(store: Store, onClose: () -> Unit) {
         title = { Text("Staff communication") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(min = 300.dp, max = 520.dp)) {
-                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                OutlinedTextField(value = host, onValueChange = { host = it.trim(); prefs.edit().putString("owner_ip", it.trim()).apply() }, modifier = Modifier.fillMaxWidth(), label = { Text("Admin server address") }, singleLine = true)\n                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)\n                if (token.isBlank()) Text("Sign in with your staff PIN first. The team chat uses your staff session.", color = MaterialTheme.colorScheme.error)
                 LazyColumn(Modifier.weight(1f, fill = true), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(messages, key = { it.id }) { item ->
                         Card(Modifier.fillMaxWidth()) {
