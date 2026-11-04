@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var printer: PrinterManager
     private val scanStatus=mutableStateOf(""); private val scannedDiscountCode=mutableStateOf("")
     private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.refresh() }
-    private val notificationPermissionLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){ granted -> if(granted) startOrderAlerts() }
+    private val notificationPermissionLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){ startOrderAlerts() }
     private val logoVersion=mutableStateOf(0)
     private val exportMenuLauncher=registerForActivityResult(CreateDocument("text/csv")){uri->uri?.let{writeMenuCsv(it)}}
     private val importMenuLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{readMenuCsv(it)}}
