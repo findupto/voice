@@ -20,6 +20,7 @@ object LocalNetworkSync {
  private const val PORT=8765
  private const val PREFS="voice_local_network"
  @Volatile private var server:PosLanServer?=null
+ private val offlineQueueLock=Any()
  fun token(context:Context):String {
   val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
   return p.getString("access_token",null)?:ByteArray(24).also{SecureRandom().nextBytes(it)}.joinToString(""){"%02x".format(it)}.also{p.edit().putString("access_token",it).apply()}
@@ -104,32 +105,41 @@ object LocalNetworkSync {
   return result
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
- @Synchronized fun queueOfflineOrder(context:Context,order:PendingSale){
+ fun queueOfflineOrder(context:Context,order:PendingSale){
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
-  val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
-  if((0 until queue.length()).any{queue.optJSONObject(it)?.optLong("id")==order.id})return
-  check(queue.length()<5000){"Offline order queue is full. Connect to the owner device before accepting more offline orders."}
-  queue.put(orderJson(order))
-  check(prefs.edit().putString("offline_order_queue",queue.toString()).commit()){"Could not persist the offline order queue"}
+  synchronized(offlineQueueLock){
+   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
+   if((0 until queue.length()).any{queue.optJSONObject(it)?.optLong("id")==order.id})return
+   check(queue.length()<5000){"Offline order queue is full. Connect to the owner device before accepting more offline orders."}
+   queue.put(orderJson(order))
+   check(prefs.edit().putString("offline_order_queue",queue.toString()).commit()){"Could not persist the offline order queue"}
+  }
  }
  fun offlineOrderQueueCount(context:Context):Int {
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
-  return runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]").length()}.getOrDefault(0)
+  return synchronized(offlineQueueLock){runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]").length()}.getOrDefault(0)}
  }
- @Synchronized fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
+ fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
-  val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
-  var sent=0
-  var attempted=0
-  val remaining=JSONArray()
-  for(i in 0 until queue.length()){
-   val order=queue.optJSONObject(i)?:continue
-   if(attempted>=25){remaining.put(order);continue}
-   attempted++
-   try{request(ip,token,"/orders","POST",order.toString());sent++}
-   catch(_:Exception){remaining.put(order)}
+  val batch=synchronized(offlineQueueLock){
+   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
+   (0 until minOf(queue.length(),25)).mapNotNull{index->queue.optJSONObject(index)?.let{JSONObject(it.toString())}}
   }
-  prefs.edit().putString("offline_order_queue",remaining.toString()).apply()
+  val sentIds=HashSet<Long>()
+  var sent=0
+  for(order in batch){
+   try{request(ip,token,"/orders","POST",order.toString());sentIds.add(order.optLong("id"));sent++}
+   catch(_:Exception){}
+  }
+  if(sentIds.isNotEmpty())synchronized(offlineQueueLock){
+   val current=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
+   val remaining=JSONArray()
+   for(i in 0 until current.length()){
+    val order=current.optJSONObject(i)?:continue
+    if(order.optLong("id") !in sentIds)remaining.put(order)
+   }
+   check(prefs.edit().putString("offline_order_queue",remaining.toString()).commit()){"Could not persist offline queue progress"}
+  }
   return sent
  }
  fun pullMessages(ip:String,token:String):JSONArray=JSONArray(request(ip,token,"/messages"))
