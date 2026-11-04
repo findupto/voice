@@ -31,11 +31,11 @@ fun AmendPendingOrderDialog(
         query.isBlank() || it.name.contains(query, true) || it.variant.contains(query, true) || it.size.contains(query, true)
     }.take(24)
 
-    fun add(name: String, price: Double, qty: Int = 1) {
+    fun add(name: String, price: Double, qty: Int = 1, kitchen: String = "FAST_FOOD") {
         if (name.isBlank() || price < 0.0 || qty < 1) return
-        val idx = items.indexOfFirst { it.name.equals(name.trim(), true) && it.price == price }
+        val idx = items.indexOfFirst { it.name.equals(name.trim(), true) && it.price == price && it.kitchen == kitchen }
         items = if (idx >= 0) items.toMutableList().also { it[idx] = it[idx].copy(qty = it[idx].qty + qty) }
-        else items + SaleItem(name.trim(), qty, price)
+        else items + SaleItem(name.trim(), qty, price, kitchen)
     }
 
     AlertDialog(
@@ -74,7 +74,7 @@ fun AmendPendingOrderDialog(
                 Text("Add from menu", fontWeight = FontWeight.Bold)
                 OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search product / variant / size") }, singleLine = true)
                 matches.forEach { m ->
-                    Card(Modifier.fillMaxWidth().clickable { add(m.name, m.price) }) {
+                    Card(Modifier.fillMaxWidth().clickable { add(m.name, m.price, 1, m.kitchen) }) {
                         Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
                                 Text(m.name, fontWeight = FontWeight.SemiBold)
