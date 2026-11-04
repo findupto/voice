@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="voice_staff_auth.xml" />
+        <exclude domain="sharedpref" path="voice_local_network.xml" />
+        <exclude domain="sharedpref" path="voice_staff_messages.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="voice_staff_auth.xml" />
+        <exclude domain="sharedpref" path="voice_local_network.xml" />
+        <exclude domain="sharedpref" path="voice_staff_messages.xml" />
+    </device-transfer>
+</data-extraction-rules>
