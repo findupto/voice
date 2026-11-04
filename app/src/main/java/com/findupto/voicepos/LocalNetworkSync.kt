@@ -75,6 +75,25 @@ object LocalNetworkSync {
   return result
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
+ fun queueOfflineOrder(context:Context,order:PendingSale){
+  val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
+  val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
+  if((0 until queue.length()).none{queue.optJSONObject(it)?.optLong("id")==order.id})queue.put(orderJson(order))
+  prefs.edit().putString("offline_order_queue",queue.toString()).apply()
+ }
+ fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
+  val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
+  val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
+  var sent=0
+  val remaining=JSONArray()
+  for(i in 0 until queue.length()){
+   val order=queue.optJSONObject(i)?:continue
+   try{request(ip,token,"/orders","POST",order.toString());sent++}
+   catch(_:Exception){remaining.put(order)}
+  }
+  prefs.edit().putString("offline_order_queue",remaining.toString()).apply()
+  return sent
+ }
  fun pushStatus(ip:String,token:String,id:Long,status:String,actor:String,role:String,note:String=""):String=request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).put("note",note).toString())
  fun loginStaff(ip:String,name:String,pin:String):JSONObject=JSONObject(request(ip,"","/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
  fun enrollStaff(ip:String,ownerSession:String,name:String,pin:String,role:String):String=request(ip,ownerSession,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role",role).toString())
