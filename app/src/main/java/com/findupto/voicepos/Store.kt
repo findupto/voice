@@ -104,6 +104,14 @@ class Store(private val context:Context){
   all.values.sortedBy{it.optLong("time")}.takeLast(5000).forEach{merged.put(it)}
   p.edit().putString("order_audit",merged.toString()).apply()
  }
+ fun reconcileCompletedOrdersFromAudit() {
+  val completed=orderAudit()
+  val billedIds=(0 until completed.length()).mapNotNull{i->
+   val event=completed.optJSONObject(i)?:return@mapNotNull null
+   event.optLong("orderId").takeIf{it>0L&&event.optString("action")=="BILLED"}
+  }.toSet()
+  if(billedIds.isNotEmpty())savePending(pending().filterNot{it.id in billedIds})
+ }
  fun orderAudit():org.json.JSONArray=runCatching{org.json.JSONArray(p.getString("order_audit","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
  fun setStaffSession(name:String,role:String){p.edit().putString("staff_name",name.trim()).putString("staff_role",role.uppercase()).apply()}
  fun staffName()=p.getString("staff_name","")?:""
