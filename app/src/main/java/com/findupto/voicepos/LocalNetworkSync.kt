@@ -104,13 +104,17 @@ object LocalNetworkSync {
   return result
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
- fun queueOfflineOrder(context:Context,order:PendingSale){
+ @Synchronized fun queueOfflineOrder(context:Context,order:PendingSale){
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
-  if((0 until queue.length()).none{queue.optJSONObject(it)?.optLong("id")==order.id})queue.put(orderJson(order))
-  prefs.edit().putString("offline_order_queue",queue.toString()).apply()
+  if(queue.length()<5000&&(0 until queue.length()).none{queue.optJSONObject(it)?.optLong("id")==order.id})queue.put(orderJson(order))
+  prefs.edit().putString("offline_order_queue",queue.toString()).commit()
  }
- fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
+ fun offlineOrderQueueCount(context:Context):Int {
+  val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
+  return runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]").length()}.getOrDefault(0)
+ }
+ @Synchronized @Synchronized fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
   var sent=0
@@ -220,9 +224,12 @@ object LocalNetworkSync {
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
-      if(firstSetup)require(role=="OWNER"){"First account must be OWNER"}
       synchronized(accountLock){
-       val a=accounts();val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
+       val a=accounts()
+       val firstAccount=a.length()==0
+       if(firstAccount)require(role=="OWNER"){"First account must be OWNER"}
+       else require(staffSession(session)?.role=="OWNER"){"Only the owner can manage staff accounts"}
+       val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
        authPrefs.edit().putString("accounts",a.toString()).commit()
