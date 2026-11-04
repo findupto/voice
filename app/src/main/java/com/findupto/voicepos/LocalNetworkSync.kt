@@ -88,6 +88,8 @@ object LocalNetworkSync {
    store.upsertRemoteOrder(order);result.add(order)
   }
   runCatching{store.mergeOrderAudit(JSONArray(request(ip,token,"/orders/audit")))}
+  runCatching{store.mergeShifts(JSONArray(request(ip,token,"/shifts")))}
+  runCatching{request(ip,token,"/shifts","POST",store.shiftsJson().toString())}
   return result
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
@@ -203,6 +205,13 @@ object LocalNetworkSync {
      session.uri=="/orders"&&session.method==Method.GET -> {
       require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view live orders"}
       json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
+     }
+     session.uri=="/shifts" -> {
+      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER")){"Your staff role cannot manage shift records"}
+      if(session.method==Method.GET) json(Response.Status.OK,store.shiftsJson()) else {
+       require(session.method==Method.POST){"Unsupported shift request"}
+       val incoming=JSONArray(readBody(session));require(incoming.length()<=2000){"Too many shift records"};store.mergeShifts(incoming);json(Response.Status.OK,JSONObject().put("ok",true).put("count",store.shiftsJson().length()))
+      }
      }
      session.uri=="/orders/audit"&&session.method==Method.GET -> {
       require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view order activity"}
