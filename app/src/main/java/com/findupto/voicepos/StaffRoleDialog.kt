@@ -20,7 +20,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  val prefs=context.getSharedPreferences("voice_local_network",0)
  val scope=rememberCoroutineScope()
  var ip by remember{mutableStateOf(if(LocalNetworkSync.isRunning())"127.0.0.1" else prefs.getString("owner_ip","")?.takeIf{it.isNotBlank()}?:"")}
- var ownerCode by remember{mutableStateOf(LocalNetworkSync.token(context))}
+ var ownerCode by remember{mutableStateOf(prefs.getString("owner_pairing_code", null) ?: LocalNetworkSync.token(context))}
  var name by remember{mutableStateOf(store.staffName())}
  var pin by remember{mutableStateOf("")}
  var role by remember{mutableStateOf("WAITER")}
