@@ -20,23 +20,25 @@ import org.json.JSONObject
 
 /** Creates a validated, rotating local business backup on the primary Admin/Owner device. */
 class PosAutoBackupWorker(context:Context,params:WorkerParameters):Worker(context,params){
- override fun doWork():Result = try {
-  val store=Store(applicationContext)
-  if(store.staffRole() !in setOf("ADMIN","OWNER")) return Result.success()
-  val raw=store.exportBackup()
-  val parsed=JSONObject(raw)
-  require(parsed.optString("format").startsWith("VOICE_POS_BACKUP_V")) { "Backup format validation failed" }
-  val dir=File(applicationContext.filesDir,"automatic_backups")
-  if(!dir.exists()&&!dir.mkdirs()) error("Could not create backup directory")
-  val stamp=SimpleDateFormat("yyyyMMdd-HHmmss",Locale.US).format(Date())
-  val target=File(dir,"voice-pos-$stamp.json")
-  val temp=File(dir,".$stamp.tmp")
-  FileOutputStream(temp).use { it.write(raw.toByteArray(Charsets.UTF_8)); it.fd.sync() }
-  if(!temp.renameTo(target)){temp.delete();error("Could not finalize backup")}
-  dir.listFiles()?.filter { it.isFile && it.name.startsWith("voice-pos-") && it.name.endsWith(".json") }
-   ?.sortedByDescending { it.lastModified() }?.drop(14)?.forEach { it.delete() }
-  Result.success()
- } catch (_:Exception) { Result.retry() }
+ override fun doWork():Result {
+  return try {
+   val store=Store(applicationContext)
+   if(store.staffRole() !in setOf("ADMIN","OWNER")) return Result.success()
+   val raw=store.exportBackup()
+   val parsed=JSONObject(raw)
+   require(parsed.optString("format").startsWith("VOICE_POS_BACKUP_V")) { "Backup format validation failed" }
+   val dir=File(applicationContext.filesDir,"automatic_backups")
+   if(!dir.exists()&&!dir.mkdirs()) error("Could not create backup directory")
+   val stamp=SimpleDateFormat("yyyyMMdd-HHmmss",Locale.US).format(Date())
+   val target=File(dir,"voice-pos-$stamp.json")
+   val temp=File(dir,".$stamp.tmp")
+   FileOutputStream(temp).use { it.write(raw.toByteArray(Charsets.UTF_8)); it.fd.sync() }
+   if(!temp.renameTo(target)){temp.delete();error("Could not finalize backup")}
+   dir.listFiles()?.filter { it.isFile && it.name.startsWith("voice-pos-") && it.name.endsWith(".json") }
+    ?.sortedByDescending { it.lastModified() }?.drop(14)?.forEach { it.delete() }
+   Result.success()
+  } catch (_:Exception) { Result.retry() }
+ }
 }
 
 /** Best-effort background reconciliation. WorkManager retries when a network is available. */
