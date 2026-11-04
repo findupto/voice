@@ -54,9 +54,13 @@ class OrderAlertService : Service() {
                         val signature = "${order.status}|${order.updatedAt}|${order.kitchenProgress}|${order.items.joinToString { it.name + ":" + it.qty }}"
                         val state = getSharedPreferences("pos_order_alert_state", MODE_PRIVATE)
                         val old = state.getString("seen_${order.id}", null)
-                        if (old != signature && shouldAlert(role, order) && state.getString("ack_${order.id}", null) != signature) {
+                        val acknowledged = state.getString("ack_${order.id}", null) == signature
+                        val lastAlert = state.getLong("alert_time_${order.id}", 0L)
+                        val repeatDue = old == signature && System.currentTimeMillis() - lastAlert >= 30_000L
+                        if (shouldAlert(role, order) && !acknowledged && (old != signature || repeatDue)) {
                             postOrderAlert(order.id, signature, role, order.tableName.ifBlank { order.orderType },
                                 order.items.joinToString { "${it.qty}× ${it.name}" }, order.specialInstructions)
+                            state.edit().putLong("alert_time_${order.id}", System.currentTimeMillis()).apply()
                         }
                         state.edit().putString("seen_${order.id}", signature).apply()
                     }
