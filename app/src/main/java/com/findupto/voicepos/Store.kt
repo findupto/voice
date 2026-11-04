@@ -29,7 +29,7 @@ class Store(private val context:Context){
  fun sales()=p.getString("sales","")!!.lines().filter{it.isNotBlank()}.mapNotNull{runCatching{val a=it.split("~");Sale(a[0].toLong(),di(a[1]),a[2].toDouble(),a[3].toLong(),dec(a.getOrNull(4).orEmpty()),dec(a.getOrNull(5).orEmpty()),a.getOrNull(6)?:"DINE_IN",dec(a.getOrNull(7).orEmpty()),a.getOrNull(8)?:"CASH",a.getOrNull(9)?.toDoubleOrNull()?:a[2].toDouble(),a.getOrNull(10)?.toDoubleOrNull()?:0.0,a.getOrNull(11)?.toLongOrNull()?:0L,a.getOrNull(12)?.toDoubleOrNull()?:0.0,a.getOrNull(13)?.toDoubleOrNull()?:0.0)}.getOrNull()}
  private fun saveSales(xs:List<Sale>)=p.edit().putString("sales",xs.joinToString("\n"){"${it.id}~${ei(it.items)}~${it.total}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${it.paymentMethod}~${it.paidAmount}~${it.dueAmount}~${it.shiftId}~${it.serviceCharge}~${it.tax}"}).apply()
  fun addSale(s:Sale):Boolean{if(hasSale(s.id))return false;saveSales(sales()+s);if(s.paidAmount>0)addPayment(PaymentRecord(System.currentTimeMillis(),s.id,s.paidAmount,s.paymentMethod,System.currentTimeMillis(),s.shiftId));if(s.dueAmount>0)addDue(DueAccount(s.id,s.id,s.customerName,s.customerPhone,s.total,s.paidAmount,s.time));return true};fun updateSale(s:Sale)=saveSales(sales().map{if(it.id==s.id)s else it})
- fun pending()=p.getString("pending","")!!.lines().filter{it.isNotBlank()}.mapNotNull{runCatching{val a=it.split("~");PendingSale(a[0].toLong(),di(a[1]),a[2].toLong(),dec(a.getOrNull(3).orEmpty()),dec(a.getOrNull(4).orEmpty()),a.getOrNull(5)?:"DINE_IN",dec(a.getOrNull(6).orEmpty()),dec(a.getOrNull(7).orEmpty()),dec(a.getOrNull(8).orEmpty()),dec(a.getOrNull(9).orEmpty()),dec(a.getOrNull(10).orEmpty()),dec(a.getOrNull(11).orEmpty()),a.getOrNull(12)?:"NEW",dec(a.getOrNull(13).orEmpty()),a.getOrNull(14)?.toLongOrNull()?:a[2].toLong(),a.getOrNull(15)?.toLongOrNull()?:0L)}.getOrNull()};private fun savePending(xs:List<PendingSale>)=p.edit().putString("pending",xs.joinToString("\n"){"${it.id}~${ei(it.items)}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${enc(it.shiftPerson)}~${enc(it.tableName)}~${enc(it.waiterName)}~${enc(it.counterName)}~${enc(it.chefName)}~${it.status}~${enc(it.specialInstructions)}~${it.updatedAt}~${it.servedAt}"}).apply();fun addPending(s:PendingSale){if(pending().none{it.id==s.id}&&!hasSale(s.id))savePending(pending()+s)};fun replacePending(s:PendingSale)=savePending(pending().map{if(it.id==s.id)s else it});fun removePending(id:Long)=savePending(pending().filterNot{it.id==id})
+ fun pending()=p.getString("pending","")!!.lines().filter{it.isNotBlank()}.mapNotNull{runCatching{val a=it.split("~");PendingSale(a[0].toLong(),di(a[1]),a[2].toLong(),dec(a.getOrNull(3).orEmpty()),dec(a.getOrNull(4).orEmpty()),a.getOrNull(5)?:"DINE_IN",dec(a.getOrNull(6).orEmpty()),dec(a.getOrNull(7).orEmpty()),dec(a.getOrNull(8).orEmpty()),dec(a.getOrNull(9).orEmpty()),dec(a.getOrNull(10).orEmpty()),dec(a.getOrNull(11).orEmpty()),a.getOrNull(12)?:"NEW",dec(a.getOrNull(13).orEmpty()),a.getOrNull(14)?.toLongOrNull()?:a[2].toLong(),a.getOrNull(15)?.toLongOrNull()?:0L,a.getOrNull(16)?: "{}")}.getOrNull()};private fun savePending(xs:List<PendingSale>)=p.edit().putString("pending",xs.joinToString("\n"){"${it.id}~${ei(it.items)}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${enc(it.shiftPerson)}~${enc(it.tableName)}~${enc(it.waiterName)}~${enc(it.counterName)}~${enc(it.chefName)}~${it.status}~${enc(it.specialInstructions)}~${it.updatedAt}~${it.servedAt}~${it.kitchenProgress.replace("~"," ")}"}).apply();fun addPending(s:PendingSale){if(pending().none{it.id==s.id}&&!hasSale(s.id))savePending(pending()+s)};fun replacePending(s:PendingSale)=savePending(pending().map{if(it.id==s.id)s else it});fun removePending(id:Long)=savePending(pending().filterNot{it.id==id})
 
  // Shared service workflow metadata and audit history. Each transition is timestamped and attributed.
  @Synchronized fun upsertRemoteOrder(order:PendingSale){
@@ -37,6 +37,23 @@ class Store(private val context:Context){
   if(current==null){addPending(order);return}
   // Never let a delayed poll overwrite a newer amendment or kitchen status.
   if(order.updatedAt>current.updatedAt)replacePending(order)
+ }
+ @Synchronized fun updateKitchenStation(id:Long,station:String,status:String,actor:String,role:String):Boolean {
+  if(role!="CHEF"&&role!="OWNER"&&role!="ADMIN")return false
+  if(station !in setOf("FAST_FOOD","GRILLED","MILK_SHAKES","TEA_COFFEE")||status !in setOf("PREPARING","READY"))return false
+  val order=pending().firstOrNull{it.id==id}?:return false
+  if(order.items.none{it.kitchen==station})return false
+  val progress=runCatching{org.json.JSONObject(order.kitchenProgress)}.getOrDefault(org.json.JSONObject())
+  val current=progress.optString(station,"NEW")
+  val allowed=if(status=="PREPARING")current=="NEW" else current=="PREPARING"
+  if(!allowed)return current==status
+  progress.put(station,status)
+  val required=order.items.map{it.kitchen}.distinct()
+  val allReady=required.all{progress.optString(it,"NEW")=="READY"}
+  val updated=order.copy(kitchenProgress=progress.toString(),status=if(allReady)"READY" else if(required.any{progress.optString(it)=="PREPARING"})"PREPARING" else order.status,updatedAt=System.currentTimeMillis())
+  replacePending(updated)
+  appendOrderAudit(id,actor,role,"KITCHEN_$station","$status • ${if(allReady)"All stations ready" else "Station progress updated"}",updated.updatedAt)
+  return true
  }
  @Synchronized fun updateOrderWorkflow(id:Long, status:String, actor:String, role:String, note:String="", table:String?=null):Boolean {
   val order=pending().firstOrNull{it.id==id}?:return false
