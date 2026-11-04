@@ -7,6 +7,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +43,23 @@ private val PosSurface = Color(0xFF151F30)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun PosApp(store:Store,printer:PrinterManager,logoVersion:Int,exportMenu:()->Unit,importMenu:()->Unit,pickLogo:()->Unit,scanDocument:()->Unit,exportBackup:()->Unit,importBackup:()->Unit,scanDiscountCardImage:()->Unit,scannedDiscountCode:String,clearScannedDiscountCode:()->Unit){
  var tab by remember{mutableIntStateOf(0)};var cart by remember{mutableStateOf(emptyList<SaleItem>())};var cash by remember{mutableStateOf(store.cash())};var tick by remember{mutableIntStateOf(0)};var editing by remember{mutableStateOf<PendingSale?>(null)};var amend by remember{mutableStateOf<PendingSale?>(null)};var settings by remember{mutableStateOf(false)};var printerSettings by remember{mutableStateOf(false)};var businessSettings by remember{mutableStateOf(false)};var expense by remember{mutableStateOf(false)};var opening by remember{mutableStateOf(store.activeShift()==null&&store.staffRole()!="GUEST")};var selectedSale by remember{mutableStateOf<Sale?>(null)};var manualCart by remember{mutableStateOf(false)};var discountDialog by remember{mutableStateOf(false)};var customerDialog by remember{mutableStateOf(false)};var customerName by remember{mutableStateOf("")};var customerPhone by remember{mutableStateOf("")};var orderType by remember{mutableStateOf("DINE_IN")};var customerAddress by remember{mutableStateOf("")};var ultra by remember{mutableStateOf(false)};var settlementOrder by remember{mutableStateOf<PendingSale?>(null)};var inventoryOpen by remember{mutableStateOf(false)};var duesOpen by remember{mutableStateOf(false)};var supplierDuesOpen by remember{mutableStateOf(false)};var discountCardsOpen by remember{mutableStateOf(false)};var eventPlanningOpen by remember{mutableStateOf(false)};var localNetworkOpen by remember{mutableStateOf(false)};var staffOpen by remember{mutableStateOf(store.staffRole()=="GUEST")};var liveOperationsOpen by remember{mutableStateOf(false)}
- val context=LocalContext.current;val premium=remember(context){PremiumFeatureStore(context)};val inventory=remember(context){InventoryStore(context)};val supplierDues=remember(context){SupplierDueStore(context)};val menu=remember(tick){store.menu()};val profile=remember(tick,logoVersion){store.profile()};val sales=remember(tick){store.sales()};val expenses=remember(tick){store.expenses()};val pending=remember(tick){store.pending()}
+ val context=LocalContext.current
+ LaunchedEffect(store.staffRole()) {
+  val net=context.getSharedPreferences("voice_local_network",0)
+  while(true) {
+   val host=net.getString("owner_ip","").orEmpty()
+   val session=net.getString("staff_session","").orEmpty()
+   if(host.isNotBlank()&&session.isNotBlank()) {
+    runCatching { withContext(Dispatchers.IO) {
+     LocalNetworkSync.retryOfflineOrders(host,session,context)
+     LocalNetworkSync.pullOrders(host,session,store)
+    } }
+    tick++
+   }
+   delay(3000L)
+  }
+ }
+ val premium=remember(context){PremiumFeatureStore(context)};val inventory=remember(context){InventoryStore(context)};val supplierDues=remember(context){SupplierDueStore(context)};val menu=remember(tick){store.menu()};val profile=remember(tick,logoVersion){store.profile()};val sales=remember(tick){store.sales()};val expenses=remember(tick){store.expenses()};val pending=remember(tick){store.pending()}
  fun addToCart(item:SaleItem){val i=cart.indexOfFirst{canonicalProductKey(it.name)==canonicalProductKey(item.name)&&it.price==item.price&&it.kitchen==item.kitchen};cart=if(i>=0)cart.toMutableList().also{it[i]=it[i].copy(qty=it[i].qty+item.qty)}else cart+item}
  fun applyCartDiscount(amount:Double){val products=cart.filterNot{it.name.startsWith(CART_DISCOUNT_PREFIX)};cart=if(amount>0)products+SaleItem(CART_DISCOUNT_PREFIX,1,-amount)else products}
  fun requestSettle(order:PendingSale){settlementOrder=order}
