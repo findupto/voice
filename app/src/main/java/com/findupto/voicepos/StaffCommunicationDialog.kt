@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -20,6 +21,7 @@ import java.util.UUID
 @Composable
 fun StaffCommunicationDialog(store: Store, onClose: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("voice_local_network", 0) }
     val host = remember { prefs.getString("owner_ip", "").orEmpty() }
     val token = remember { prefs.getString("staff_session", "").orEmpty() }
@@ -66,13 +68,13 @@ fun StaffCommunicationDialog(store: Store, onClose: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(enabled = draft.isNotBlank() && !sending && host?.isNotBlank() == true && token.isNotBlank(), onClick = {
+            Button(enabled = draft.isNotBlank() && !sending && host.isNotBlank() && token.isNotBlank(), onClick = {
                 val message = draft.trim()
                 sending = true
                 error = ""
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                scope.launch {
                     runCatching {
-                        withContext(Dispatchers.IO) { LocalNetworkSync.sendMessage(host!!, token, UUID.randomUUID().toString(), store.staffName(), store.staffRole(), message) }
+                        withContext(Dispatchers.IO) { LocalNetworkSync.sendMessage(host, token, UUID.randomUUID().toString(), store.staffName(), store.staffRole(), message) }
                         draft = ""
                     }.onFailure { error = it.message ?: "Message could not be sent" }
                     sending = false
