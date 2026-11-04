@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         StoreMigration.migrate(this)
         store=Store(this)
+        PosBackgroundSync.schedule(this)
         printer=PrinterManager(this,store)
         val bluetoothPermissions=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         if(bluetoothPermissions.any{checkSelfPermission(it)!=android.content.pm.PackageManager.PERMISSION_GRANTED}) bluetoothPermissionLauncher.launch(bluetoothPermissions)
