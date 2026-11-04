@@ -26,6 +26,10 @@ class OrderAlertService : Service() {
             .setContentTitle("Restaurant POS alerts active")
             .setContentText("Watching for waiter, kitchen and counter orders")
             .setOngoing(true).setPriority(NotificationCompat.PRIORITY_MIN).build())
+        val initialStore = Store(this)
+        if (initialStore.staffRole() in setOf("ADMIN", "OWNER")) {
+            LocalNetworkSync.start(this, initialStore)
+        }
         worker = Thread { monitorOrders() }.also { it.name = "PosOrderAlertMonitor"; it.start() }
     }
 
@@ -49,6 +53,9 @@ class OrderAlertService : Service() {
                 val ip = prefs.getString("owner_ip", "").orEmpty()
                 val session = prefs.getString("staff_session", "").orEmpty()
                 val role = store.staffRole()
+                if (role in setOf("ADMIN", "OWNER") && !LocalNetworkSync.isRunning()) {
+                    LocalNetworkSync.start(this, store)
+                }
                 if (ip.isNotBlank() && session.isNotBlank() && role in setOf("WAITER","CHEF","COUNTER","OWNER","ADMIN")) {
                     LocalNetworkSync.pullOrders(ip, session, store).forEach { order ->
                         val signature = "${order.status}|${order.updatedAt}|${order.kitchenProgress}|${order.items.joinToString { it.name + ":" + it.qty }}"
