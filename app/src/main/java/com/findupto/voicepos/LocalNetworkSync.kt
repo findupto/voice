@@ -106,12 +106,10 @@ object LocalNetworkSync {
    val order=PendingSale(x.getLong("id"),lines,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L),x.optString("kitchenProgress","{}"))
    store.upsertRemoteOrder(order);result.add(order)
   }
-  runCatching{
-   store.mergeOrderAudit(JSONArray(request(ip,token,"/orders/audit")))
-   // The owner removes billed orders from its active queue; audit events carry
-   // the durable tombstone so waiter devices can remove the same stale copy.
-   store.reconcileCompletedOrdersFromAudit()
-  }
+  runCatching{store.mergeOrderAudit(JSONArray(request(ip,token,"/orders/audit")))}
+  // Completed-order IDs have their own retention, independent of the shorter audit log.
+  runCatching{store.mergeCompletedOrderIds(JSONArray(request(ip,token,"/orders/completed")))}
+  store.reconcileCompletedOrdersFromAudit()
   runCatching{store.mergeShifts(JSONArray(request(ip,token,"/shifts")))}
   runCatching{request(ip,token,"/shifts","POST",store.shiftsJson().toString())}
   return result
@@ -355,6 +353,10 @@ object LocalNetworkSync {
      session.uri=="/orders/audit"&&session.method==Method.GET -> {
       require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view order activity"}
       json(Response.Status.OK,store.orderAudit())
+     }
+     session.uri=="/orders/completed"&&session.method==Method.GET -> {
+      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view completed orders"}
+      json(Response.Status.OK,store.completedOrderIdsJson())
      }
      session.uri=="/orders"&&session.method==Method.POST -> {
       require(staffSession(session)?.role in setOf("WAITER","OWNER","ADMIN")){"Only a waiter can submit orders"}
