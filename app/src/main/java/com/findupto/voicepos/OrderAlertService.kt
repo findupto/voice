@@ -50,7 +50,9 @@ class OrderAlertService : Service() {
     private fun monitorOrders() {
         val prefs = getSharedPreferences("voice_local_network", MODE_PRIVATE)
         val store = Store(this)
-        while (running) {
+        var failureCount = 0
+        while (running && !Thread.currentThread().isInterrupted) {
+            var pollSucceeded = false
             try {
                 val ip = prefs.getString("owner_ip", "").orEmpty()
                 val session = prefs.getString("staff_session", "").orEmpty()
@@ -62,20 +64,36 @@ class OrderAlertService : Service() {
                     LocalNetworkSync.pullOrders(ip, session, store).forEach { order ->
                         val signature = "${order.status}|${order.updatedAt}|${order.kitchenProgress}|${order.items.joinToString { it.name + ":" + it.qty }}"
                         val state = getSharedPreferences("pos_order_alert_state", MODE_PRIVATE)
-                        val old = state.getString("seen_${order.id}", null)
-                        val acknowledged = state.getString("ack_${order.id}", null) == signature
-                        val lastAlert = state.getLong("alert_time_${order.id}", 0L)
-                        val repeatDue = false
-                        if (shouldAlert(role, order) && !acknowledged && old != signature) {
-                            postOrderAlert(order.id, signature, role, order.tableName.ifBlank { order.orderType },
-                                order.items.joinToString { "${it.qty}× ${it.name}" }, order.specialInstructions)
-                            state.edit().putLong("alert_time_${order.id}", System.currentTimeMillis()).apply()
+                        val edit = state.edit()
+                        if (order.status in setOf("SERVED", "DELIVERED", "BILLED")) {
+                            edit.remove("seen_${order.id}").remove("ack_${order.id}").remove("alert_time_${order.id}").apply()
+                        } else {
+                            val previousSignature = state.getString("seen_${order.id}", null)
+                            val acknowledged = state.getString("ack_${order.id}", null) == signature
+                            val lastAlert = state.getLong("alert_time_${order.id}", 0L)
+                            val now = System.currentTimeMillis()
+                            val changed = previousSignature != signature
+                            val repeatDue = lastAlert == 0L || now - lastAlert >= 15L * 60L * 1000L
+                            if (shouldAlert(role, order) && !acknowledged && (changed || repeatDue)) {
+                                postOrderAlert(order.id, signature, role, order.tableName.ifBlank { order.orderType },
+                                    order.items.joinToString { "${it.qty}× ${it.name}" }, order.specialInstructions)
+                                edit.putLong("alert_time_${order.id}", now)
+                            }
+                            edit.putString("seen_${order.id}", signature).apply()
                         }
-                        state.edit().putString("seen_${order.id}", signature).apply()
                     }
+                    pollSucceeded = true
+                } else {
+                    // No configured owner connection is an idle state, not a network failure.
+                    failureCount = 0
                 }
-            } catch (_: Exception) { }
-            try { Thread.sleep(4000L) } catch (_: InterruptedException) { break }
+            } catch (_: Exception) {
+                // Keep the foreground monitor alive; retry transient LAN and server errors.
+                failureCount = (failureCount + 1).coerceAtMost(4)
+            }
+            if (pollSucceeded) failureCount = 0
+            val delay = if (failureCount == 0) 4_000L else minOf(60_000L, 4_000L shl failureCount)
+            try { Thread.sleep(delay) } catch (_: InterruptedException) { break }
         }
     }
 
