@@ -32,7 +32,7 @@ data class InventoryStockItem(
 data class RecipeComponent(val stockName: String, val quantity: Double, val unit: String)
 data class ProductRecipe(val productName: String, val components: List<RecipeComponent>)
 
-private fun quantityInStockUnit(quantity: Double, recipeUnit: String, stockUnit: String): Double? {
+internal fun quantityInStockUnit(quantity: Double, recipeUnit: String, stockUnit: String): Double? {
     val from = recipeUnit.trim().lowercase()
     val to = stockUnit.trim().lowercase()
     if (from == to) return quantity
