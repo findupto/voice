@@ -47,4 +47,14 @@ class VoiceCommandEngineTest {
         assertTrue(VoiceCommandEngine.parse("please add 2 pizza", menu)
             .none { it is VoiceCommand.Add })
     }
+    @Test fun voiceAddedCatalogItemPreservesKitchenStation() {
+        val menu = listOf(MenuItem(7L, "Chicken Pasta", 890.0, kitchen = "PASTA"))
+
+        val added = VoiceCommandEngine.parse("add 2 chicken pasta", menu)
+            .filterIsInstance<VoiceCommand.Add>()
+            .single()
+
+        assertEquals(2, added.item.qty)
+        assertEquals("PASTA", added.item.kitchen)
+    }
 }
