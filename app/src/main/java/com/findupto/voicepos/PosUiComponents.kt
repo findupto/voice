@@ -210,33 +210,33 @@ fun KitchenQueue(
     edit: (PendingSale) -> Unit
 ) {
     val context = LocalContext.current
+    val active = queue.filter { it.status !in setOf("SERVED", "DELIVERED") }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Kitchen Queue", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Kitchen & Live Order Queue", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("${active.size} active • ${active.count { it.status == "READY" }} ready • ${active.count { it.status == "PREPARING" }} preparing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+        if (active.isEmpty()) Text("No active orders. New waiter orders will appear here automatically.", modifier = Modifier.padding(vertical = 18.dp))
         LazyColumn {
-            items(queue) { order ->
+            items(active, key = { it.id }) { order ->
+                val progress = runCatching { org.json.JSONObject(order.kitchenProgress) }.getOrDefault(org.json.JSONObject())
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { edit(order) }) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("#${order.id} • ${order.orderType.replace('_', ' ')}", fontWeight = FontWeight.Bold)
-                                Text(order.items.joinToString(", ") { "${it.qty}× ${it.name}" })
-                                if (order.customerName.isNotBlank() || order.customerPhone.isNotBlank()) {
-                                    Text(listOf(order.customerName, order.customerPhone).filter(String::isNotBlank).joinToString(" • "))
-                                }
-                                if (order.customerAddress.isNotBlank()) Text(order.customerAddress, style = MaterialTheme.typography.bodySmall)
+                                Text("${order.tableName.ifBlank { order.orderType.replace('_', ' ') }} • #${order.id}", fontWeight = FontWeight.Bold)
+                                Text("${order.status} • ${date(order.time)}", color = if (order.status == "READY") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
                             TextButton(onClick = { pay(order) }) { Text("PAY & PRINT") }
                         }
+                        Text(order.items.joinToString(", ") { "${it.qty}× ${it.name}" })
+                        order.items.map { it.kitchen }.distinct().forEach { station ->
+                            Text("${station.replace('_', ' ')}: ${progress.optString(station, "NEW")}", style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (order.specialInstructions.isNotBlank()) Text("Note: ${order.specialInstructions}")
+                        Text("Waiter: ${order.waiterName.ifBlank { order.shiftPerson }} • Chef: ${order.chefName.ifBlank { "Unassigned" }} • Counter: ${order.counterName.ifBlank { "Unassigned" }}", style = MaterialTheme.typography.bodySmall)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { shareCustomerQuotation(context, order, profile) }) {
-                                Text("SHARE CUSTOMER QUOTE")
-                            }
-                            OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) {
-                                Text("SHARE KITCHEN SLIP")
-                            }
-                            OutlinedButton(onClick = { printer.printKitchen(kitchenReceipt(order, profile, ReceiptTheme.CLASSIC)) }) {
-                                Text("PRINT SLIP")
-                            }
+                            OutlinedButton(onClick = { shareCustomerQuotation(context, order, profile) }) { Text("SHARE CUSTOMER QUOTE") }
+                            OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) { Text("SHARE KITCHEN SLIP") }
+                            OutlinedButton(onClick = { printer.printKitchen(kitchenReceipt(order, profile, ReceiptTheme.CLASSIC)) }) { Text("PRINT SLIP") }
                         }
                     }
                 }
@@ -244,7 +244,6 @@ fun KitchenQueue(
         }
     }
 }
-
 @Composable fun EditDialog(order:PendingSale,save:(PendingSale)->Unit,close:()->Unit){var items by remember{mutableStateOf(order.items)};AlertDialog(onDismissRequest=close,title={Text("Edit Order")},text={Column{items.forEach{item->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("${item.qty} × ${item.name}",Modifier.weight(1f));IconButton(onClick={items=items.map{x->if(x==item)x.copy(qty=x.qty-1)else x}.filter{it.qty>0}}){Icon(Icons.Default.Remove,null)}}}}},confirmButton={TextButton(onClick={save(order.copy(items=items))}){Text("SAVE")}},dismissButton={TextButton(onClick=close){Text("CLOSE")}})}
 @Composable fun SalesPage(sales:List<Sale>,open:(Sale)->Unit){Column(Modifier.fillMaxSize().padding(16.dp)){Text("Sales",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);LazyColumn{items(sales.reversed()){sale->Card(Modifier.fillMaxWidth().padding(vertical=4.dp).clickable{open(sale)}){Row(Modifier.padding(12.dp)){Column(Modifier.weight(1f)){Text("Receipt #${sale.id} • ${sale.orderType.replace('_',' ')}",fontWeight=FontWeight.Bold);if(sale.customerName.isNotBlank()||sale.customerPhone.isNotBlank())Text(listOf(sale.customerName,sale.customerPhone).filter(String::isNotBlank).joinToString(" • "));if(sale.customerAddress.isNotBlank())Text(sale.customerAddress,style=MaterialTheme.typography.bodySmall);Text(date(sale.time))};Text(money(sale.total))}}}}}}
 @Composable fun SaleDetailDialog(sale:Sale,profile:CompanyProfile,printer:PrinterManager,theme:ReceiptTheme,shiftPerson:String="",close:()->Unit){
