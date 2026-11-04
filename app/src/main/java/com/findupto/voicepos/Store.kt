@@ -89,6 +89,17 @@ class Store(private val context:Context){
   a.put(org.json.JSONObject().put("eventId",java.util.UUID.randomUUID().toString()).put("orderId",orderId).put("actor",actor).put("role",role).put("action",action).put("detail",detail).put("time",at))
   p.edit().putString("order_audit",a.toString()).apply()
  }
+ @Synchronized fun mergeOrderAudit(remote:org.json.JSONArray){
+  val all=linkedMapOf<String,org.json.JSONObject>()
+  for(source in listOf(orderAudit(),remote))for(i in 0 until source.length()){
+   val item=source.optJSONObject(i)?:continue
+   val id=item.optString("eventId").ifBlank{"${item.optLong("time")}:${item.optLong("orderId")}:${item.optString("actor")}:${item.optString("action")}"}
+   all[id]=item
+  }
+  val merged=org.json.JSONArray()
+  all.values.sortedBy{it.optLong("time")}.takeLast(5000).forEach{merged.put(it)}
+  p.edit().putString("order_audit",merged.toString()).apply()
+ }
  fun orderAudit():org.json.JSONArray=runCatching{org.json.JSONArray(p.getString("order_audit","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
  fun setStaffSession(name:String,role:String){p.edit().putString("staff_name",name.trim()).putString("staff_role",role.uppercase()).apply()}
  fun staffName()=p.getString("staff_name","")?:""
