@@ -87,6 +87,7 @@ object LocalNetworkSync {
    val order=PendingSale(x.getLong("id"),lines,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L),x.optString("kitchenProgress","{}"))
    store.upsertRemoteOrder(order);result.add(order)
   }
+  runCatching{store.mergeOrderAudit(JSONArray(request(ip,token,"/orders/audit")))}
   return result
  }
  fun pushOrder(ip:String,token:String,order:PendingSale):String=request(ip,token,"/orders","POST",orderJson(order).toString())
@@ -202,6 +203,10 @@ object LocalNetworkSync {
      session.uri=="/orders"&&session.method==Method.GET -> {
       require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view live orders"}
       json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
+     }
+     session.uri=="/orders/audit"&&session.method==Method.GET -> {
+      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view order activity"}
+      json(Response.Status.OK,store.orderAudit())
      }
      session.uri=="/orders"&&session.method==Method.POST -> {
       require(staffSession(session)?.role in setOf("WAITER","OWNER","ADMIN")){"Only a waiter can submit orders"}
