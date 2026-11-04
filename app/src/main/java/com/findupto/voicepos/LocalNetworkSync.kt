@@ -114,7 +114,7 @@ object LocalNetworkSync {
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
   return runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]").length()}.getOrDefault(0)
  }
- @Synchronized @Synchronized fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
+ @Synchronized fun retryOfflineOrders(ip:String,token:String,context:Context):Int{
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
   var sent=0
