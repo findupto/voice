@@ -25,10 +25,21 @@ object LocalNetworkSync {
  }
  @Synchronized fun start(context:Context,store:Store):Boolean {
   if(server?.isAlive==true)return true
-  // Fail closed: once staff accounts exist, only the authenticated Owner
-  // device may host the primary server. Empty accounts allow first setup.
-  val accounts=runCatching{JSONObject(context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE).getString("accounts","{}")?:"{}")}.getOrDefault(JSONObject())
-  if(accounts.length()>0&&store.staffRole()!="OWNER")return false
+  val auth=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
+  val accounts=runCatching{JSONObject(auth.getString("accounts","{}")?:"{}")}.getOrDefault(JSONObject())
+  // First launch: create the requested Owner and Admin credentials on this server device.
+  if(accounts.length()==0) {
+   fun addDefault(name:String,pin:String,role:String) {
+    val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
+    val spec=PBEKeySpec(pin.toCharArray(),salt,120000,256)
+    val hash=try{SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded.joinToString(""){"%02x".format(it)}}finally{spec.clearPassword()}
+    val saltHex=salt.joinToString(""){"%02x".format(it)}
+    accounts.put(name.lowercase(),JSONObject().put("name",name).put("role",role).put("salt",saltHex).put("hash",hash).put("active",true))
+   }
+   addDefault("Malik","0099","OWNER")
+   addDefault("Admin","1122","ADMIN")
+   auth.edit().putString("accounts",accounts.toString()).apply()
+  } else if(store.staffRole() !in setOf("OWNER","ADMIN")) return false
   return runCatching{PosLanServer(context,store,token(context)).also{it.start(NanoHTTPD.SOCKET_READ_TIMEOUT,false);server=it};true}.getOrDefault(false)
  }
  @Synchronized fun stop(){server?.stop();server=null}
