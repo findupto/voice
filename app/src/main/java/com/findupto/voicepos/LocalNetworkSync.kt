@@ -25,6 +25,10 @@ object LocalNetworkSync {
  }
  @Synchronized fun start(context:Context,store:Store):Boolean {
   if(server?.isAlive==true)return true
+  // Fail closed: once staff accounts exist, only the authenticated Owner
+  // device may host the primary server. Empty accounts allow first setup.
+  val accounts=runCatching{JSONObject(context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE).getString("accounts","{}")?:"{}")}.getOrDefault(JSONObject())
+  if(accounts.length()>0&&store.staffRole()!="OWNER")return false
   return runCatching{PosLanServer(context,store,token(context)).also{it.start(NanoHTTPD.SOCKET_READ_TIMEOUT,false);server=it};true}.getOrDefault(false)
  }
  @Synchronized fun stop(){server?.stop();server=null}
