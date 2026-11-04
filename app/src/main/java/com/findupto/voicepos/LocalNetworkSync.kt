@@ -278,7 +278,12 @@ object LocalNetworkSync {
       synchronized(accountLock){
        val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
        if(!active&&target.optString("role")=="OWNER"){
-        val activeOwners=a.keys().count{candidate->val item=a.optJSONObject(candidate);item!=null&&item.optString("role")=="OWNER"&&item.optBoolean("active",true)}
+        var activeOwners=0
+        val ownerKeys=a.keys()
+        while(ownerKeys.hasNext()){
+         val item=a.optJSONObject(ownerKeys.next())
+         if(item!=null&&item.optString("role")=="OWNER"&&item.optBoolean("active",true))activeOwners++
+        }
         require(activeOwners>1){"The last active owner cannot be disabled"}
        }
        target.put("active",active);authPrefs.edit().putString("accounts",a.toString()).commit()
