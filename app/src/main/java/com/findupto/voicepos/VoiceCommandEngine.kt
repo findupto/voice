@@ -30,7 +30,30 @@ object VoiceCommandEngine {
     private fun phonetic(x:String)=norm(x).replace(" ","").replace(Regex("[aeiou]"),"")
     private fun distance(a:String,b:String):Int{val d=Array(a.length+1){IntArray(b.length+1)};for(i in 0..a.length)d[i][0]=i;for(j in 0..b.length)d[0][j]=j;for(i in 1..a.length)for(j in 1..b.length)d[i][j]=minOf(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+if(a[i-1]==b[j-1])0 else 1);return d[a.length][b.length]}
     private fun tokenScore(a:String,b:String):Double{if(a==b)return 1.0;if(a.length<2||b.length<2)return 0.0;if(a.contains(b)||b.contains(a))return .90;if(phonetic(a)==phonetic(b))return .95;val d=distance(a,b);return when{d<=1->.93;d<=2->.86;d<=3&&minOf(a.length,b.length)>=5->.78;d<=4&&minOf(a.length,b.length)>=7->.68;else->0.0}}
-    private fun bestMenu(text:String,menu:List<MenuItem>):MenuItem?{val q=norm(text).split(" ").filter{it.isNotBlank()&&!it.matches(Regex("\\d+"))};if(q.isEmpty()||menu.isEmpty())return null;return menu.map{p->val words=listOf(p.name,p.variant,p.size).filter{it.isNotBlank()}.flatMap{norm(it).split(" ")};val scores=q.map{a->words.maxOfOrNull{b->tokenScore(a,b)}?:0.0};val coverage=scores.count{it>=.62};val avg=if(scores.isEmpty())0.0 else scores.average();Triple(p,avg,coverage)}.filter{it.third>=1}.maxWithOrNull(compareBy<Triple<MenuItem,Double,Int>>{it.third}.thenBy{it.second})?.takeIf{it.second>=.62}?.first}
+    /**
+     * Resolve a spoken product only when the best candidate is sufficiently clear.
+     * Similar menu names/variants must not silently turn an ambiguous voice request
+     * into the wrong bill line.
+     */
+    private fun bestMenu(text:String,menu:List<MenuItem>):MenuItem? {
+        val q=norm(text).split(" ").filter{it.isNotBlank()&&!it.matches(Regex("\\d+"))}
+        if(q.isEmpty()||menu.isEmpty())return null
+        val ranked=menu.map{p->
+            val words=listOf(p.name,p.variant,p.size).filter{it.isNotBlank()}.flatMap{norm(it).split(" ")}
+            val scores=q.map{a->words.maxOfOrNull{b->tokenScore(a,b)}?:0.0}
+            val coverage=scores.count{it>=.62}
+            val average=if(scores.isEmpty())0.0 else scores.average()
+            val exact=scores.count{it>=.999}
+            Triple(p,average,coverage*100+exact)
+        }.filter{it.third>=100&&it.second>=.70}
+            .sortedWith(compareByDescending<Triple<MenuItem,Double,Int>>{it.third}.thenByDescending{it.second})
+        val best=ranked.firstOrNull()?:return null
+        val second=ranked.getOrNull(1)?:return best.first
+        // Same-strength candidates are intentionally rejected; ask for a more
+        // specific variant instead of guessing at a sale or price change.
+        if(best.third==second.third&&best.second-second.second<.08)return null
+        return best.first
+    }
     private fun numbers(s:String)=nums.entries.fold(s){x,(w,n)->x.replace(Regex("\\b${Regex.escape(w)}\\b"),n.toString())}
     private fun embeddedQty(s:String,menu:List<MenuItem>):Pair<Int,String>{
         val numeric=Regex("\\b(\\d+)\\b").find(s);if(numeric!=null){val q=numeric.groupValues[1].toIntOrNull()?.coerceIn(1,999)?:1;return q to s.removeRange(numeric.range).replace(Regex("\\s+")," ").trim()}
