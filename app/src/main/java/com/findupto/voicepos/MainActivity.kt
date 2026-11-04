@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import android.Manifest
 import android.os.Build
+import android.content.pm.PackageManager
 import androidx.compose.runtime.mutableStateOf
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var printer: PrinterManager
     private val scanStatus=mutableStateOf(""); private val scannedDiscountCode=mutableStateOf("")
     private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.refresh() }
+    private val notificationPermissionLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){ granted -> if(granted) startOrderAlerts() }
     private val logoVersion=mutableStateOf(0)
     private val exportMenuLauncher=registerForActivityResult(CreateDocument("text/csv")){uri->uri?.let{writeMenuCsv(it)}}
     private val importMenuLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{readMenuCsv(it)}}
@@ -47,6 +49,7 @@ class MainActivity : ComponentActivity() {
         StoreMigration.migrate(this)
         store=Store(this)
         PosBackgroundSync.schedule(this)
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else startOrderAlerts()
         printer=PrinterManager(this,store)
         val bluetoothPermissions=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         if(bluetoothPermissions.any{checkSelfPermission(it)!=android.content.pm.PackageManager.PERMISSION_GRANTED}) bluetoothPermissionLauncher.launch(bluetoothPermissions)
@@ -66,6 +69,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+    private fun startOrderAlerts(){ runCatching { androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, OrderAlertService::class.java)) } }
 
     private fun scanDiscountCardImage(uri: Uri) {
         runCatching {
