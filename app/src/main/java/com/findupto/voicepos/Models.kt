@@ -33,28 +33,3 @@ data class CompanyProfile(
 )
 enum class ReceiptTheme { CLASSIC, MODERN, COMPACT, RESTAURANT, ADVANCED_PREMIUM }
 object CurrencySettings { var symbol: String = "Rs" }
-
-data class InventoryItem(
-    val id: String,
-    val name: String,
-    val unit: String,
-    val onHand: Double,
-    val minimum: Double = 0.0,
-    val averageCost: Double = 0.0,
-    val updatedAt: Long = System.currentTimeMillis()
-)
-data class RecipeLine(
-    val productKey: String,
-    val ingredientId: String,
-    val quantity: Double
-)
-data class StockMovement(
-    val id: String,
-    val ingredientId: String,
-    val quantityDelta: Double,
-    val reason: String,
-    val referenceId: String = "",
-    val unitCost: Double = 0.0,
-    val actor: String = "",
-    val time: Long = System.currentTimeMillis()
-)
