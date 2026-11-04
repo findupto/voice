@@ -108,7 +108,10 @@ class InventoryStore(context: Context) {
         prefs.edit().putString("recipes", root.toString()).apply()
         return true
     }
-    fun consumeSale(saleItems: List<SaleItem>) {
+    @Synchronized fun consumeSale(saleId: Long, saleItems: List<SaleItem>): Boolean {
+        if (saleId <= 0L) return false
+        val processed = JSONArray(prefs.getString("consumed_sales", "[]"))
+        if ((0 until processed.length()).any { processed.optLong(it) == saleId }) return false
         val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
         val stock = items().toMutableList()
         saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
@@ -128,7 +131,12 @@ class InventoryStore(context: Context) {
                 logMovement(c.stockName, -used * sold.qty, "Sale: ${sold.name}")
             }
         }
+        processed.put(saleId)
+        while (processed.length() > 10000) processed.remove(0)
+        prefs.edit().putString("consumed_sales", processed.toString()).apply()
+        return true
     }
+    fun consumeSale(saleItems: List<SaleItem>) { consumeSale(System.currentTimeMillis(), saleItems) }
     private fun logMovement(name: String, quantity: Double, reason: String) {
         val a = JSONArray(prefs.getString("movements", "[]"))
         a.put(JSONObject().put("time", System.currentTimeMillis()).put("name", name).put("quantity", quantity).put("reason", reason))
