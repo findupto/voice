@@ -54,8 +54,8 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
       "Welcome, ${result.getString("name")}."
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
-    TextButton(enabled=!busy,onClick={if(LocalNetworkSync.isRunning())ip="127.0.0.1";ownerCode=LocalNetworkSync.token(context);mode="OWNER_SETUP";message="Owner server detected on this phone. Create your owner account here."}){Text("FIRST TIME? SET UP OWNER")}
-    if(currentRole=="OWNER"&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER: CREATE STAFF ACCOUNT")}
+    Text("Default accounts on a new Admin server: Malik / 0099 (Owner), Admin / 1122 (Admin).",style=MaterialTheme.typography.bodySmall)
+    if(currentRole in setOf("OWNER","ADMIN")&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER / ADMIN: CREATE STAFF ACCOUNT")}
    }else if(mode=="OWNER_SETUP"){
     Text("OWNER SETUP",fontWeight=FontWeight.Bold)
     Text("On the owner's phone: open Network (router icon) → Start Main Server. Copy the Access code shown there.")
@@ -68,7 +68,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
     TextButton(onClick={mode="SIGN_IN"}){Text("BACK TO SIGN IN")}
    }else{
     Text("CREATE STAFF ACCOUNT",fontWeight=FontWeight.Bold)
-    Text("You are signed in as ${store.staffName()} (OWNER). Give each staff member their own name and PIN.")
+    Text("You are signed in as ${store.staffName()} (${store.staffRole()}). Give each staff member their own name and PIN.")
     OutlinedTextField(name,{name=it},label={Text("Staff member name")},singleLine=true,modifier=Modifier.fillMaxWidth())
     OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("New 4–8 digit PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
     Text("Choose staff role",style=MaterialTheme.typography.labelMedium)
