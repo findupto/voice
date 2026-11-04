@@ -241,6 +241,24 @@ class Store(private val context:Context){
   }
   mergeArray("recipes"){it.optString("productKey")+":"+it.optString("ingredientId")}
   mergeArray("stockMovements"){it.optString("id")}
+  // Rebuild synchronized on-hand balances from the deduplicated movement ledger.
+  // This prevents last-writer-wins sync from erasing concurrent sales on separate devices.
+  run {
+   val totals=linkedMapOf<String,Double>()
+   val movements=current.optJSONArray("stockMovements")?:org.json.JSONArray()
+   for(i in 0 until movements.length()){
+    val movement=movements.optJSONObject(i)?:continue
+    val id=movement.optString("ingredientId")
+    if(id.isNotBlank())totals[id]=(totals[id]?:0.0)+movement.optDouble("quantityDelta",0.0)
+   }
+   val items=current.optJSONArray("inventory")?:org.json.JSONArray()
+   for(i in 0 until items.length()){
+    val item=items.optJSONObject(i)?:continue
+    val id=item.optString("id")
+    if(totals.containsKey(id))item.put("onHand",totals[id]!!)
+   }
+   current.put("inventory",items)
+  }
   run {
    val seen=linkedSetOf<String>();val merged=org.json.JSONArray()
    for(source in listOf(current.optJSONArray("stockDeductions")?:org.json.JSONArray(),incoming.optJSONArray("stockDeductions")?:org.json.JSONArray()))for(i in 0 until source.length()){
