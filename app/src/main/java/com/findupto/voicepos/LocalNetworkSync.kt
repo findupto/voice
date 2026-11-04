@@ -172,7 +172,7 @@ object LocalNetworkSync {
       json(Response.Status.OK,JSONObject().put("session",key).put("name",account.getString("name")).put("role",role))
      }
      session.uri=="/staff/enroll"&&session.method==Method.POST -> {
-      require(firstSetup||staffSession(session)?.role in setOf("OWNER","ADMIN")){"Only the owner or admin can manage staff accounts"}
+      require(firstSetup||staffSession(session)?.role=="OWNER"){"Only the owner can manage staff accounts"}
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
