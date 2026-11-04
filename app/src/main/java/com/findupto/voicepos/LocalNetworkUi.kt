@@ -55,10 +55,10 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
         title = { Text("MAIN DEVICE & QR PAIRING", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("The Owner phone hosts restaurant data. Only the Owner device can start the primary server. Admin and Kitchen Head takeover remains disabled until secure standby replication and leader election are configured. All phones must use the same Wi-Fi or hotspot.")
+                Text("The Admin phone hosts the main restaurant server. Start it on the Admin phone, then let staff scan its QR code. Owner Malik keeps full business ownership. All phones must use the same Wi-Fi or hotspot.")
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("OWNER — MAIN DEVICE", fontWeight = FontWeight.Bold)
+                        Text("ADMIN — MAIN SERVER", fontWeight = FontWeight.Bold)
                         Text(if (hosting) "Main server is running" else "Main server is stopped", color = if (hosting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         if (hosting) {
                             Text("Staff: scan this QR code to pair", fontWeight = FontWeight.SemiBold)
@@ -72,15 +72,15 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                                 message = "Main server stopped."
                             } else {
                                 hosting = LocalNetworkSync.start(context, store)
-                                message = if (hosting) "Main server ready. Show the QR code to staff." else "Server not started. Only the Owner device can host the primary server after Owner setup; also check port 8765."
+                                message = if (hosting) "Main server ready. Show the QR code to staff." else "Server not started. Only the Admin or Owner device can host the main server; also check port 8765."
                             }
                         }, modifier = Modifier.fillMaxWidth()) { Text(if (hosting) "STOP MAIN SERVER" else "MAKE THIS THE MAIN DEVICE") }
                     }
                 }
                 HorizontalDivider()
                 Text("STAFF DEVICE", fontWeight = FontWeight.Bold)
-                Text(if (pairedAddress.isBlank()) "Scan the Owner's QR code once. Then sign in with your own staff name and PIN." else "Paired address: $pairedAddress")
-                OutlinedButton(onClick = { scanner.launch(Intent(context, LiveQrScannerActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) { Text("SCAN OWNER PAIRING QR") }
+                Text(if (pairedAddress.isBlank()) "Scan the Admin server QR code once. Then sign in with your own staff name and PIN." else "Paired address: $pairedAddress")
+                OutlinedButton(onClick = { scanner.launch(Intent(context, LiveQrScannerActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) { Text("SCAN ADMIN SERVER QR") }
                 Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             }
         },
