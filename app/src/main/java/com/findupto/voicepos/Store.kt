@@ -64,6 +64,8 @@ class Store(private val context:Context){
    "PREPARING"->setOf("READY")
    "READY"->setOf("SERVED","OUT_FOR_DELIVERY","BILLED")
    "OUT_FOR_DELIVERY"->setOf("DELIVERED","BILLED")
+   "SERVED"->setOf("BILLED")
+   "DELIVERED"->setOf("BILLED")
    else->emptySet()
   }
   if(status !in allowed)return false
