@@ -291,7 +291,7 @@ class Store(private val context:Context){
   val soldIds=(0 until sold.length()).mapNotNull{sold.optJSONObject(it)?.optString("id")}.toSet()
   val pending=current.optJSONArray("pending")?:org.json.JSONArray()
   val cleanPending=org.json.JSONArray()
-  for(i in 0 until pending.length()){val item=pending.optJSONObject(i)?:continue;if(item.optString("id") !in soldIds && item.optString("id").toLongOrNull() !in completedIds)cleanPending.put(item)}
+  for(i in 0 until pending.length()){val item=pending.optJSONObject(i)?:continue;if(item.optString("id") !in soldIds && item.optString("id").toLongOrNull()?.let{it !in completedIds} != false)cleanPending.put(item)}
   current.put("pending",cleanPending)
   current.put("inventory",InventoryStore(context).mergeBackup(current.optJSONObject("inventory"),incoming.optJSONObject("inventory")))
   importBackup(current.toString())
