@@ -245,6 +245,7 @@ object LocalNetworkSync {
       require(firstSetup||staffSession(session)?.role=="OWNER"){"Only the owner can manage staff accounts"}
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
+      val actor=staffSession(session)?.name?:"Owner bootstrap"
       require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
       synchronized(accountLock){
        val a=accounts()
@@ -256,6 +257,7 @@ object LocalNetworkSync {
        a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
        authPrefs.edit().putString("accounts",a.toString()).commit()
       }
+      store.appendOrderAudit(0L,actor,"OWNER","STAFF_ENROLLED","$name ($role)")
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
      }
      session.uri=="/staff/accounts"&&session.method==Method.GET -> {
@@ -270,6 +272,7 @@ object LocalNetworkSync {
      }
      session.uri=="/staff/accounts/status"&&session.method==Method.POST -> {
       require(staffSession(session)?.role=="OWNER"){"Only the owner can change staff access"}
+      val actor=staffSession(session)?.name?:"Owner"
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val active=x.getBoolean("active")
       require(name.isNotBlank()){"Staff name is required"}
       synchronized(accountLock){
@@ -284,10 +287,12 @@ object LocalNetworkSync {
         persistSessions()
        }
       }
+      store.appendOrderAudit(0L,actor,"OWNER",if(active)"STAFF_ENABLED" else "STAFF_DISABLED",name)
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("active",active))
      }
      session.uri=="/staff/accounts/pin"&&session.method==Method.POST -> {
       require(staffSession(session)?.role=="OWNER"){"Only the owner can reset staff PINs"}
+      val actor=staffSession(session)?.name?:"Owner"
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
       require(name.isNotBlank()&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       synchronized(accountLock){
@@ -298,6 +303,7 @@ object LocalNetworkSync {
        sessions.entries.removeIf{it.value.name.equals(name,true)}
        persistSessions()
       }
+      store.appendOrderAudit(0L,actor,"OWNER","STAFF_PIN_RESET",name)
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("sessionsRevoked",true))
      }
      session.uri=="/staff/logout"&&session.method==Method.POST -> {
