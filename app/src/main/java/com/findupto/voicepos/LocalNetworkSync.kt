@@ -107,8 +107,10 @@ object LocalNetworkSync {
  @Synchronized fun queueOfflineOrder(context:Context,order:PendingSale){
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
-  if(queue.length()<5000&&(0 until queue.length()).none{queue.optJSONObject(it)?.optLong("id")==order.id})queue.put(orderJson(order))
-  prefs.edit().putString("offline_order_queue",queue.toString()).commit()
+  if((0 until queue.length()).any{queue.optJSONObject(it)?.optLong("id")==order.id})return
+  check(queue.length()<5000){"Offline order queue is full. Connect to the owner device before accepting more offline orders."}
+  queue.put(orderJson(order))
+  check(prefs.edit().putString("offline_order_queue",queue.toString()).commit()){"Could not persist the offline order queue"}
  }
  fun offlineOrderQueueCount(context:Context):Int {
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
@@ -118,9 +120,12 @@ object LocalNetworkSync {
   val prefs=context.getSharedPreferences("voice_local_network",Context.MODE_PRIVATE)
   val queue=runCatching{JSONArray(prefs.getString("offline_order_queue","[]")?:"[]")}.getOrDefault(JSONArray())
   var sent=0
+  var attempted=0
   val remaining=JSONArray()
   for(i in 0 until queue.length()){
    val order=queue.optJSONObject(i)?:continue
+   if(attempted>=25){remaining.put(order);continue}
+   attempted++
    try{request(ip,token,"/orders","POST",order.toString());sent++}
    catch(_:Exception){remaining.put(order)}
   }
