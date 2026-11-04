@@ -69,7 +69,7 @@ object LocalNetworkSync {
   for(i in 0 until a.length()){
    val x=a.getJSONObject(i);val items=x.getJSONArray("items")
    val lines=(0 until items.length()).map{val q=items.getJSONObject(it);SaleItem(q.getString("name"),q.getInt("qty"),q.getDouble("price"),q.optString("kitchen","FAST_FOOD"))}
-   val order=PendingSale(x.getLong("id"),lines,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L))
+   val order=PendingSale(x.getLong("id"),lines,x.getLong("time"),x.optString("customerName"),x.optString("customerPhone"),x.optString("orderType","DINE_IN"),x.optString("customerAddress"),x.optString("shiftPerson"),x.optString("tableName"),x.optString("waiterName"),x.optString("counterName"),x.optString("chefName"),x.optString("status","NEW"),x.optString("specialInstructions"),x.optLong("updatedAt",x.getLong("time")),x.optLong("servedAt",0L),x.optString("kitchenProgress","{}"))
    store.upsertRemoteOrder(order);result.add(order)
   }
   return result
@@ -94,12 +94,13 @@ object LocalNetworkSync {
   prefs.edit().putString("offline_order_queue",remaining.toString()).apply()
   return sent
  }
+ fun pushKitchenStatus(ip:String,token:String,id:Long,station:String,status:String):String=request(ip,token,"/orders/kitchen","POST",JSONObject().put("id",id).put("station",station).put("status",status).toString())
  fun pushStatus(ip:String,token:String,id:Long,status:String,actor:String,role:String,note:String=""):String=request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).put("note",note).toString())
  fun loginStaff(ip:String,name:String,pin:String):JSONObject=JSONObject(request(ip,"","/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
  fun enrollStaff(ip:String,ownerSession:String,name:String,pin:String,role:String):String=request(ip,ownerSession,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role",role).toString())
  fun setupOwner(ip:String,ownerCode:String,name:String,pin:String):String=request(ip,ownerCode,"/staff/enroll","POST",JSONObject().put("name",name).put("pin",pin).put("role","OWNER").toString(),true)
  private fun orderJson(s:PendingSale)=JSONObject().apply{
-  put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt)
+  put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt);put("kitchenProgress",s.kitchenProgress)
   put("items",JSONArray().apply{s.items.forEach{put(JSONObject().put("name",it.name).put("qty",it.qty).put("price",it.price).put("kitchen",it.kitchen))}})
  }
  private data class StaffSession(val name:String,val role:String,val expiresAt:Long)
@@ -186,6 +187,11 @@ object LocalNetworkSync {
       store.upsertRemoteOrder(order)
       if(existing==null)store.appendOrderAudit(order.id,staffSession(session)?.name?:order.waiterName,staffSession(session)?.role?:"WAITER","ORDER_SENT","Order received by owner device")
       json(Response.Status.OK,JSONObject().put("ok",true).put("id",order.id))
+     }
+     session.uri=="/orders/kitchen"&&session.method==Method.POST -> {
+      val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      val ok=store.updateKitchenStation(x.getLong("id"),x.getString("station").uppercase(),x.getString("status").uppercase(),authenticated.name,authenticated.role)
+      if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Kitchen update rejected: check station, role and workflow"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/orders/status"&&session.method==Method.POST -> {
       val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
