@@ -144,19 +144,20 @@ class Store(private val context:Context){
   // Preserve audit events from both backups. Older records without eventId
   // use a stable content key so repeated imports remain idempotent.
   run {
-   val merged=org.json.JSONArray();val seen=linkedSetOf<String>()
+   val byId=linkedMapOf<String,org.json.JSONObject>()
    for(source in listOf(current.optJSONArray("orderAudit")?:org.json.JSONArray(),incoming.optJSONArray("orderAudit")?:org.json.JSONArray())) {
     for(i in 0 until source.length()) {
      val event=source.optJSONObject(i)?:continue
      val key=event.optString("eventId").ifBlank {
       listOf("orderId","actor","role","action","detail","time").joinToString("|"){event.optString(it)}
      }
-     if(seen.add(key))merged.put(event)
+     byId.putIfAbsent(key,event)
     }
    }
-   // Keep the newest 5,000 merged events; each device retains its own recent tail.
+   // Sort by event time before bounding so merge order cannot discard newer history.
+   val ordered=byId.values.sortedWith(compareBy<org.json.JSONObject>{it.optLong("time")}.thenBy{it.optString("eventId")})
    val bounded=org.json.JSONArray()
-   for(i in (merged.length()-4999).coerceAtLeast(0) until merged.length())bounded.put(merged.getJSONObject(i))
+   ordered.takeLast(5000).forEach{bounded.put(it)}
    current.put("orderAudit",bounded)
   }
   val sold=current.optJSONArray("sales")?:org.json.JSONArray()
