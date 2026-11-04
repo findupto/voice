@@ -49,13 +49,13 @@ class PosBackgroundSyncWorker(context:Context,params:WorkerParameters):Worker(co
   return try{
    val store=Store(applicationContext)
    LocalNetworkSync.retryOfflineOrders(ip,session,applicationContext)
-   val queued=store.offlineDeliveryUpdates()
-   var index=0
-   while(index<queued.length()){
-    val item=queued.getJSONObject(index)
+   // Remove only the head after the server confirms it; do not skip entries as the queue shrinks.
+   while(true){
+    val queued=store.offlineDeliveryUpdates()
+    if(queued.length()==0)break
+    val item=queued.getJSONObject(0)
     LocalNetworkSync.pushStatus(ip,session,item.getLong("id"),item.getString("status"),item.optString("actor"),"RIDER")
     store.removeOfflineDeliveryUpdate(0)
-    index++
    }
    LocalNetworkSync.pullOrders(ip,session,store)
    Result.success()
