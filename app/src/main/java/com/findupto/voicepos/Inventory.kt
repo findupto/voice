@@ -292,7 +292,8 @@ class InventoryStore(context: Context) {
         if (data == null) return
         val items = data.optJSONArray("items") ?: JSONArray(); val recipes = data.optJSONObject("recipes") ?: JSONObject()
         val movements = data.optJSONArray("movements") ?: JSONArray(); val consumed = data.optJSONArray("consumedSales") ?: JSONArray()
-        prefs.edit().putString("items", items.toString()).putString("recipes", recipes.toString()).putString("movements", movements.toString()).putString("consumed_sales", consumed.toString()).apply()
+        prefs.edit().putString("items", items.toString()).putString("recipes", recipes.toString()).putString("movements", movements.toString()).putString("consumed_sales", consumed.toString()).commit()
+        migrateLegacyMovementBaseline()
     }
 
     fun recentMovements(): List<String> {
