@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -40,9 +39,9 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
             } else message = "Invalid pairing QR. Scan the QR shown by the Owner device."
         }
     }
-    val qrBitmap = remember(hosting, localIp, accessCode) {
+    val qrBitmap = remember(hosting, localIp) {
         if (!hosting || localIp == "IP unavailable") null else runCatching {
-            val matrix = QRCodeWriter().encode("VOICEPOS-PAIR|$localIp:8765|$accessCode", BarcodeFormat.QR_CODE, 640, 640)
+            val matrix = QRCodeWriter().encode("VOICEPOS-PAIR|$localIp:8765", BarcodeFormat.QR_CODE, 640, 640)
             Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888).also { bitmap ->
                 for (x in 0 until 640) for (y in 0 until 640) bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
             }
@@ -63,7 +62,6 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                             Text("Staff: scan this QR code to pair", fontWeight = FontWeight.SemiBold)
                             qrBitmap?.let { Image(it.asImageBitmap(), "Main device pairing QR code", modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)) }
                             Text("Address: $localIp:8765", style = MaterialTheme.typography.bodySmall)
-                            SelectionContainer { Text("Pairing code: $accessCode", style = MaterialTheme.typography.labelSmall) }
                         }
                         Button(onClick = {
                             if (hosting) {
