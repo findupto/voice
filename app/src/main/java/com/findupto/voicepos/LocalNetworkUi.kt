@@ -38,7 +38,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                 PosBackgroundSync.enqueueNow(context)
                 message = "Paired with main device at $pairedAddress. Staff can now sign in using their own name and PIN."
                 Toast.makeText(context, "Paired with main POS device", Toast.LENGTH_SHORT).show()
-            } else message = "Invalid pairing QR. Scan the QR shown by the Owner device."
+            } else message = "Invalid pairing QR. Scan the QR shown by the main server."
         }
     }
     val qrBitmap = remember(hosting, localIp) {
@@ -55,7 +55,7 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
         title = { Text("MAIN DEVICE & QR PAIRING", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("The Admin phone hosts the main restaurant server. Start it on the Admin phone, then let staff scan its QR code. Owner Malik keeps full business ownership. All phones must use the same Wi-Fi or hotspot.")
+                Text("The Admin phone hosts the main restaurant server. Start it on the Admin phone, then let staff scan its QR code. The Owner retains full business control. All phones must use the same Wi-Fi or hotspot.")
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ADMIN — MAIN SERVER", fontWeight = FontWeight.Bold)
