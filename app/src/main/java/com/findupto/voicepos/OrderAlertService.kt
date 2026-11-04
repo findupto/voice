@@ -8,6 +8,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 
+@androidx.camera.core.ExperimentalGetImage
 class OrderAlertService : Service() {
     companion object {
         private const val CHANNEL = "pos_order_alerts"
