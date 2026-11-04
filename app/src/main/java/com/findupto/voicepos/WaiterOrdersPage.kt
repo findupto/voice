@@ -17,6 +17,7 @@ fun WaiterOrdersPage(
     store: Store,
     edit: (PendingSale) -> Unit,
     bill: (PendingSale) -> Unit,
+    advance: (PendingSale, String) -> Unit,
     openSale: (Sale) -> Unit
 ) {
     val name = store.staffName()
@@ -38,7 +39,10 @@ fun WaiterOrdersPage(
                         Text(order.items.joinToString { "${it.qty}× ${it.name}" }, style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { edit(order) }) { Text("ADD / MODIFY") }
-                            Button(onClick = { bill(order) }, enabled = order.status !in setOf("CANCELLED")) { Text("BILL / PRINT") }\n                            if (order.status == "READY" && order.orderType != "DELIVERY") OutlinedButton(onClick = { advance(order, "SERVED") }) { Text("MARK SERVED") }\n                            if (order.status == "READY" && order.orderType == "DELIVERY") OutlinedButton(onClick = { advance(order, "OUT_FOR_DELIVERY") }) { Text("DISPATCH") }\n                            if (order.status == "OUT_FOR_DELIVERY") OutlinedButton(onClick = { advance(order, "DELIVERED") }) { Text("DELIVERED") }
+                            Button(onClick = { bill(order) }, enabled = order.status !in setOf("CANCELLED")) { Text("BILL / PRINT") }
+                            if (order.status == "READY" && order.orderType != "DELIVERY") OutlinedButton(onClick = { advance(order, "SERVED") }) { Text("MARK SERVED") }
+                            if (order.status == "READY" && order.orderType == "DELIVERY") OutlinedButton(onClick = { advance(order, "OUT_FOR_DELIVERY") }) { Text("DISPATCH") }
+                            if (order.status == "OUT_FOR_DELIVERY") OutlinedButton(onClick = { advance(order, "DELIVERED") }) { Text("DELIVERED") }
                         }
                     }
                 }
