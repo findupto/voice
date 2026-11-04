@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var printer: PrinterManager
     private val scanStatus=mutableStateOf(""); private val scannedDiscountCode=mutableStateOf("")
     private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.refresh() }
-    private val notificationPermissionLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){ startOrderAlerts() }
+    private val notificationPermissionLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){ startOrderAlerts(); requestFeaturePermissions() }
     private val logoVersion=mutableStateOf(0)
     private val exportMenuLauncher=registerForActivityResult(CreateDocument("text/csv")){uri->uri?.let{writeMenuCsv(it)}}
     private val importMenuLauncher=registerForActivityResult(OpenDocument()){uri->uri?.let{readMenuCsv(it)}}
@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startOrderAlerts(){ runCatching { androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, OrderAlertService::class.java)) } }
+    private fun startOrderAlerts(){ runCatching { androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, OrderAlertService::class.java)) } }\n\n    private fun requestFeaturePermissions(){\n        val permissions = buildList {\n            add(Manifest.permission.CAMERA)\n            if(Build.VERSION.SDK_INT>=31){ add(Manifest.permission.BLUETOOTH_SCAN); add(Manifest.permission.BLUETOOTH_CONNECT) }\n            else add(Manifest.permission.ACCESS_FINE_LOCATION)\n        }.distinct()\n        val missing = permissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }\n        if(missing.isNotEmpty()) bluetoothPermissionLauncher.launch(missing.toTypedArray())\n    }
 
     private fun scanDiscountCardImage(uri: Uri) {
         runCatching {
