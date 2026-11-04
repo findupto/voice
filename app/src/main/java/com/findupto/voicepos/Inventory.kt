@@ -77,6 +77,34 @@ class InventoryStore(context: Context) {
         logMovement(old.name, delta, reason)
         return true
     }
+    @Synchronized fun reconcileCount(id: Long, countedQuantity: Double, note: String = "Physical stock count"): Boolean {
+        if (!countedQuantity.isFinite() || countedQuantity < 0.0) return false
+        val current = items().firstOrNull { it.id == id } ?: return false
+        val delta = countedQuantity - current.quantity
+        if (kotlin.math.abs(delta) < 0.0000001) return true
+        saveItems(items().map { if (it.id == id) it.copy(quantity = countedQuantity) else it })
+        logMovement(current.name, delta, note)
+        return true
+    }
+    fun estimatedRecipeCost(saleItems: List<SaleItem>): Double {
+        val stockByKey = items().associateBy { canonicalProductKey(it.name) }
+        val recipeByKey = recipes().associateBy { canonicalProductKey(it.productName) }
+        return saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { sold ->
+            recipeByKey[canonicalProductKey(sold.name)]?.components.orEmpty().sumOf componentLoop@ { component ->
+                val stock = stockByKey[canonicalProductKey(component.stockName)] ?: return@componentLoop 0.0
+                val amount = quantityInStockUnit(component.quantity, component.unit, stock.unit) ?: return@componentLoop 0.0
+                amount * sold.qty * stock.unitCost
+            }
+        }
+    }
+    fun recentMovementDetails(limit: Int = 12): List<String> {
+        val a = JSONArray(prefs.getString("movements", "[]"))
+        return (0 until a.length()).mapNotNull { i -> runCatching {
+            val o = a.getJSONObject(i)
+            val stamp = java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(o.getLong("time")))
+            stamp + " • " + o.getString("name") + " • " + o.getDouble("quantity") + " • " + o.getString("reason")
+        }.getOrNull() }.takeLast(limit).reversed()
+    }
     fun lowStock(): List<InventoryStockItem> = items().filter { it.quantity <= it.minimum }
     fun recipes(): List<ProductRecipe> {
         val root = JSONObject(prefs.getString("recipes", "{}"))
@@ -231,6 +259,7 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                 Text("Current stock • use kg↔g and L↔ml recipes; other units must match.", fontWeight = FontWeight.Bold)
                 LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 190.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(stock, key = { it.id }) { item ->
+                        var countedQuantity by remember(item.id, tick) { mutableStateOf(item.quantity.toString()) }
                         Card {
                             Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -239,6 +268,10 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                                         Text("${item.category} • ${item.quantity} ${item.unit} • min ${item.minimum}", style = MaterialTheme.typography.bodySmall)
                                     }
                                     if (item.quantity <= item.minimum) Text("LOW", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    OutlinedTextField(countedQuantity, { countedQuantity = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Physical count") }, modifier = Modifier.weight(1f), singleLine = true)
+                                    OutlinedButton(onClick = { val actual = countedQuantity.toDoubleOrNull(); if (actual != null && inventory.reconcileCount(item.id, actual)) { tick++; refresh(); message = "Physical count saved for ${item.name}" } else message = "Enter a valid non-negative count" }) { Text("COUNT") }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(onClick = { val amount = adjustBy.toDoubleOrNull() ?: 0.0; if (inventory.adjustStock(item.id, amount, "Stock received")) { tick++; refresh() } }) { Text("+ Receive") }
@@ -249,6 +282,9 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                     }
                 }
                 if (inventory.lowStock().isNotEmpty()) Text("Reorder: " + inventory.lowStock().joinToString { "${it.name} (${it.quantity} ${it.unit})" }, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                HorizontalDivider()
+                Text("Recent stock movements", fontWeight = FontWeight.Bold)
+                inventory.recentMovementDetails().forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             } else {
                 Text("Create a deal as a menu product, then attach every ingredient/packaging component. Each sold unit deducts all recipe components.", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(product, { product = it }, label = { Text("Product / deal name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
