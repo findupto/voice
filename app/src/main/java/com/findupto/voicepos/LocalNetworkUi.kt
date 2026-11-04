@@ -31,9 +31,9 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val raw = result.data?.getStringExtra(LiveQrScannerActivity.EXTRA_QR_CODE).orEmpty()
             val parts = raw.split("|")
-            if (parts.size == 3 && parts[0] == "VOICEPOS-PAIR" && parts[1].isNotBlank() && parts[2].isNotBlank()) {
+            if (parts.size == 2 && parts[0] == "VOICEPOS-PAIR" && parts[1].isNotBlank()) {
                 pairedAddress = parts[1]
-                prefs.edit().putString("owner_ip", parts[1]).putString("owner_pairing_code", parts[2]).apply()
+                prefs.edit().putString("owner_ip", parts[1]).apply()
                 message = "Paired with main device at $pairedAddress. Staff can now sign in using their own name and PIN."
                 Toast.makeText(context, "Paired with main POS device", Toast.LENGTH_SHORT).show()
             } else message = "Invalid pairing QR. Scan the QR shown by the Owner device."
