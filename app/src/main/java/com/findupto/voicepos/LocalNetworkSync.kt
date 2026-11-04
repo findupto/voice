@@ -251,7 +251,7 @@ object LocalNetworkSync {
       require(orderType in setOf("DINE_IN","TAKEAWAY","DELIVERY")){"Invalid order type"}
       val incoming=PendingSale(id,items,time,x.optString("customerName").take(120),x.optString("customerPhone").take(40),orderType,x.optString("customerAddress").take(300),x.optString("shiftPerson").take(80),x.optString("tableName").take(40),x.optString("waiterName").take(80),x.optString("counterName").take(80),x.optString("chefName").take(80),"NEW",x.optString("specialInstructions").take(1000),x.optLong("updatedAt",time).coerceAtLeast(time),0L)
       val existing=store.pending().firstOrNull{it.id==id}
-      val order=if(existing==null)incoming else incoming.copy(status=existing.status,waiterName=existing.waiterName,chefName=existing.chefName,counterName=existing.counterName,servedAt=existing.servedAt)
+      val order=if(existing==null)incoming else incoming.copy(status=existing.status,waiterName=existing.waiterName,chefName=existing.chefName,counterName=existing.counterName,servedAt=existing.servedAt,kitchenProgress=existing.kitchenProgress,shiftPerson=existing.shiftPerson,tableName=if(incoming.tableName.isBlank())existing.tableName else incoming.tableName)
       store.upsertRemoteOrder(order)
       if(existing==null)store.appendOrderAudit(order.id,staffSession(session)?.name?:order.waiterName,staffSession(session)?.role?:"WAITER","ORDER_SENT","Order received by owner device")
       json(Response.Status.OK,JSONObject().put("ok",true).put("id",order.id))
