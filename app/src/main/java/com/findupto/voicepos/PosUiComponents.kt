@@ -207,7 +207,8 @@ fun KitchenQueue(
     profile: CompanyProfile,
     printer: PrinterManager,
     pay: (PendingSale) -> Unit,
-    edit: (PendingSale) -> Unit
+    edit: (PendingSale) -> Unit,
+    kitchenAction: (PendingSale, String, String) -> Unit
 ) {
     val context = LocalContext.current
     val active = queue.filter { it.status !in setOf("SERVED", "DELIVERED") }
@@ -225,14 +226,20 @@ fun KitchenQueue(
                                 Text("${order.tableName.ifBlank { order.orderType.replace('_', ' ') }} • #${order.id}", fontWeight = FontWeight.Bold)
                                 Text("${order.status} • ${date(order.time)}", color = if (order.status == "READY") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
-                            TextButton(onClick = { pay(order) }) { Text("PAY & PRINT") }
+                            TextButton(onClick = { edit(order) }) { Text("ADD / EDIT ITEMS") }
                         }
                         Text(order.items.joinToString(", ") { "${it.qty}× ${it.name}" })
                         order.items.map { it.kitchen }.distinct().forEach { station ->
-                            Text("${station.replace('_', ' ')}: ${progress.optString(station, "NEW")}", style = MaterialTheme.typography.labelMedium)
+                            val state = progress.optString(station, "NEW")
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${station.replace('_', ' ')}: $state", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                                if (state == "NEW") TextButton(onClick = { kitchenAction(order, station, "PREPARING") }) { Text("START") }
+                                if (state == "PREPARING") Button(onClick = { kitchenAction(order, station, "READY") }) { Text("MARK READY") }
+                            }
                         }
+                        if (order.status == "READY") Text("ALL ITEMS READY — waiter has been notified", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (order.specialInstructions.isNotBlank()) Text("Note: ${order.specialInstructions}")
-                        Text("Waiter: ${order.waiterName.ifBlank { order.shiftPerson }} • Chef: ${order.chefName.ifBlank { "Unassigned" }} • Counter: ${order.counterName.ifBlank { "Unassigned" }}", style = MaterialTheme.typography.bodySmall)
+                        Text("Waiter: ${order.waiterName.ifBlank { order.shiftPerson }} • Chef: ${order.chefName.ifBlank { "Unassigned" }}", style = MaterialTheme.typography.bodySmall)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { shareCustomerQuotation(context, order, profile) }) { Text("SHARE CUSTOMER QUOTE") }
                             OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) { Text("SHARE KITCHEN SLIP") }
