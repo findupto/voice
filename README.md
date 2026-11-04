@@ -23,6 +23,7 @@ The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/sto
 - The /health endpoint is a basic LAN connectivity check.
 - Keep the access code within the restaurant team and use a trusted private network.
 - Live order updates use local-network polling (about four seconds), not push notifications. Keep the owner POS open and connected.
+- Staff order alerts recover after monitor restarts: unacknowledged active orders are re-alerted if still actionable after 15 minutes, while changed order/kitchen state alerts immediately. Temporary LAN failures use bounded exponential retry backoff (up to 60 seconds) instead of retrying at a fixed rapid interval. Completed orders have their local alert markers cleared.
 - The live board shows active-order age, highlights orders waiting 15 minutes or more, and gives the owner a recent activity feed.
 - The server rejects invalid workflow transitions and enforces role checks for accept, prepare, ready, served, delivery and billing actions. Audit history retains up to 5,000 events.
 - Bluetooth transport and automatic Wi-Fi discovery are not included yet; manual local IP entry works on the same LAN/hotspot.
