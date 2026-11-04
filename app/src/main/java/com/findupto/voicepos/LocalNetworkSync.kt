@@ -112,6 +112,8 @@ object LocalNetworkSync {
   prefs.edit().putString("offline_order_queue",remaining.toString()).apply()
   return sent
  }
+ fun pullMessages(ip:String,token:String):JSONArray=JSONArray(request(ip,token,"/messages"))
+ fun sendMessage(ip:String,token:String,id:String,author:String,role:String,message:String):String=request(ip,token,"/messages","POST",JSONObject().put("id",id).put("author",author).put("role",role).put("message",message).put("time",System.currentTimeMillis()).toString())
  fun pushKitchenStatus(ip:String,token:String,id:Long,station:String,status:String):String=request(ip,token,"/orders/kitchen","POST",JSONObject().put("id",id).put("station",station).put("status",status).toString())
  fun pushStatus(ip:String,token:String,id:Long,status:String,actor:String,role:String,note:String=""):String=request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).put("note",note).toString())
  fun loginStaff(ip:String,name:String,pin:String):JSONObject=JSONObject(request(ip,"","/staff/login","POST",JSONObject().put("name",name).put("pin",pin).toString(),true))
@@ -127,6 +129,8 @@ object LocalNetworkSync {
   private data class LoginAttempt(var failures:Int=0,var blockedUntil:Long=0L)
   private val loginAttempts=ConcurrentHashMap<String,LoginAttempt>()
   private val authPrefs=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
+  private val messagePrefs=context.getSharedPreferences("voice_staff_messages",Context.MODE_PRIVATE)
+  private val messageLock=Any()
   init { restoreSessions() }
   private fun restoreSessions() {
    val saved=runCatching{JSONObject(authPrefs.getString("sessions","{}")?:"{}")}.getOrDefault(JSONObject())
@@ -201,6 +205,25 @@ object LocalNetworkSync {
       a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
       authPrefs.edit().putString("accounts",a.toString()).apply()
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
+     }
+     session.uri=="/messages"&&session.method==Method.GET -> {
+      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view communication"}
+      val saved=runCatching{JSONArray(messagePrefs.getString("messages","[]")?:"[]")}.getOrDefault(JSONArray())
+      json(Response.Status.OK,saved)
+     }
+     session.uri=="/messages"&&session.method==Method.POST -> {
+      val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      val x=JSONObject(readBody(session));val id=x.optString("id");val message=x.optString("message").trim()
+      require(id.matches(Regex("[A-Za-z0-9_-]{8,80}"))&&message.isNotBlank()&&message.length<=1000){"Message must contain 1–1000 characters"}
+      synchronized(messageLock){
+       val saved=runCatching{JSONArray(messagePrefs.getString("messages","[]")?:"[]")}.getOrDefault(JSONArray())
+       if((0 until saved.length()).none{saved.optJSONObject(it)?.optString("id")==id}){
+        saved.put(JSONObject().put("id",id).put("author",authenticated.name).put("role",authenticated.role).put("message",message).put("time",System.currentTimeMillis()))
+        val trimmed=JSONArray();for(i in (saved.length()-500).coerceAtLeast(0) until saved.length())trimmed.put(saved.getJSONObject(i))
+        messagePrefs.edit().putString("messages",trimmed.toString()).apply()
+       }
+      }
+      json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/orders"&&session.method==Method.GET -> {
       require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view live orders"}
