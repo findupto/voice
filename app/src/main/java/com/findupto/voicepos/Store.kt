@@ -84,8 +84,9 @@ class Store(private val context:Context){
  }
  @Synchronized fun appendOrderAudit(orderId:Long, actor:String, role:String, action:String, detail:String="", at:Long=System.currentTimeMillis()) {
   val old=orderAudit();val a=org.json.JSONArray()
-  for(i in (old.length()-499).coerceAtLeast(0) until old.length())a.put(old.getJSONObject(i))
-  a.put(org.json.JSONObject().put("orderId",orderId).put("actor",actor).put("role",role).put("action",action).put("detail",detail).put("time",at))
+  // Retain a substantially longer local audit trail for later reconciliation.
+  for(i in (old.length()-4999).coerceAtLeast(0) until old.length())a.put(old.getJSONObject(i))
+  a.put(org.json.JSONObject().put("eventId",java.util.UUID.randomUUID().toString()).put("orderId",orderId).put("actor",actor).put("role",role).put("action",action).put("detail",detail).put("time",at))
   p.edit().putString("order_audit",a.toString()).apply()
  }
  fun orderAudit():org.json.JSONArray=runCatching{org.json.JSONArray(p.getString("order_audit","[]")?:"[]")}.getOrDefault(org.json.JSONArray())
@@ -140,6 +141,24 @@ class Store(private val context:Context){
   mergeArray("dues"){it.optString("id")+":"+it.optString("saleId")}
   mergeArray("payments"){it.optString("saleId")+":"+it.optString("amount")+":"+it.optString("method")+":"+it.optString("time")}
   mergeArray("events"){it.optString("id")}
+  // Preserve audit events from both backups. Older records without eventId
+  // use a stable content key so repeated imports remain idempotent.
+  run {
+   val merged=org.json.JSONArray();val seen=linkedSetOf<String>()
+   for(source in listOf(current.optJSONArray("orderAudit")?:org.json.JSONArray(),incoming.optJSONArray("orderAudit")?:org.json.JSONArray())) {
+    for(i in 0 until source.length()) {
+     val event=source.optJSONObject(i)?:continue
+     val key=event.optString("eventId").ifBlank {
+      listOf("orderId","actor","role","action","detail","time").joinToString("|"){event.optString(it)}
+     }
+     if(seen.add(key))merged.put(event)
+    }
+   }
+   // Keep the newest 5,000 merged events; each device retains its own recent tail.
+   val bounded=org.json.JSONArray()
+   for(i in (merged.length()-4999).coerceAtLeast(0) until merged.length())bounded.put(merged.getJSONObject(i))
+   current.put("orderAudit",bounded)
+  }
   val sold=current.optJSONArray("sales")?:org.json.JSONArray()
   val soldIds=(0 until sold.length()).mapNotNull{sold.optJSONObject(it)?.optString("id")}.toSet()
   val pending=current.optJSONArray("pending")?:org.json.JSONArray()
