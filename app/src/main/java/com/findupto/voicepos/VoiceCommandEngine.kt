@@ -51,7 +51,7 @@ object VoiceCommandEngine {
         val second=ranked.getOrNull(1)?:return best.first
         // Same-strength candidates are intentionally rejected; ask for a more
         // specific variant instead of guessing at a sale or price change.
-        if(best.third==second.third&&best.second-second.second<.08)return null
+        if(best.second<.999&&best.third==second.third&&best.second-second.second<.08)return null
         return best.first
     }
     private fun numbers(s:String)=nums.entries.fold(s){x,(w,n)->x.replace(Regex("\\b${Regex.escape(w)}\\b"),n.toString())}
