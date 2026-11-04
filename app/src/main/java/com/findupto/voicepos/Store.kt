@@ -127,12 +127,12 @@ class Store(private val context:Context){
  fun addInventoryItem(item:InventoryItem):Boolean {
   if(item.id.isBlank()||item.name.isBlank()||item.unit.isBlank()||item.onHand<0||item.minimum<0||item.averageCost<0)return false
   if(inventory().any{it.id==item.id||it.name.equals(item.name,true)})return false
-  saveInventory(inventory()+item.copy(name=item.name.trim(),unit=item.unit.trim(),updatedAt=System.currentTimeMillis()));return true
+  val clean=item.copy(name=item.name.trim(),unit=item.unit.trim(),updatedAt=System.currentTimeMillis());saveInventory(inventory()+clean);if(clean.onHand>0)saveStockMovements(stockMovements()+StockMovement("opening:${clean.id}",clean.id,clean.onHand,"OPENING_BALANCE","",clean.averageCost,staffName(),clean.updatedAt));return true
  }
  fun updateInventoryItem(item:InventoryItem):Boolean {
   if(item.id.isBlank()||item.name.isBlank()||item.unit.isBlank()||item.onHand<0||item.minimum<0||item.averageCost<0)return false
   val all=inventory();if(all.none{it.id==item.id}||all.any{it.id!=item.id&&it.name.equals(item.name,true)})return false
-  saveInventory(all.map{if(it.id==item.id)item.copy(name=item.name.trim(),unit=item.unit.trim(),updatedAt=System.currentTimeMillis())else it});return true
+  val current=all.first{it.id==item.id};saveInventory(all.map{if(it.id==item.id)item.copy(name=item.name.trim(),unit=item.unit.trim(),onHand=current.onHand,updatedAt=System.currentTimeMillis())else it});return true
  }
  fun lowStockItems()=inventory().filter{it.onHand<=it.minimum}.sortedBy{it.onHand-it.minimum}
  fun inventoryValue()=inventory().sumOf{it.onHand*it.averageCost}
@@ -241,7 +241,13 @@ class Store(private val context:Context){
   }
   mergeArray("recipes"){it.optString("productKey")+":"+it.optString("ingredientId")}
   mergeArray("stockMovements"){it.optString("id")}
-  mergeArray("stockDeductions"){it.toString()}
+  run {
+   val seen=linkedSetOf<String>();val merged=org.json.JSONArray()
+   for(source in listOf(current.optJSONArray("stockDeductions")?:org.json.JSONArray(),incoming.optJSONArray("stockDeductions")?:org.json.JSONArray()))for(i in 0 until source.length()){
+    val id=source.optString(i);if(id.isNotBlank()&&seen.add(id))merged.put(id)
+   }
+   current.put("stockDeductions",merged)
+  }
   run {
    val byId=linkedMapOf<String,org.json.JSONObject>()
    for(source in listOf(current.optJSONArray("shifts")?:org.json.JSONArray(),incoming.optJSONArray("shifts")?:org.json.JSONArray())) {
