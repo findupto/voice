@@ -135,7 +135,7 @@ class InventoryStore(context: Context) {
         for (i in 0 until arr.length()) {
             val c = arr.getJSONObject(i)
             if (canonicalProductKey(c.optString("stockName")) == canonicalProductKey(stock.name)) {
-                if (!replaced) { next.put(JSONObject().put("stockName", stock.name).put("quantity", quantity).put("unit", unit)); replaced = true }
+                if (!replaced) { next.put(JSONObject().put("stockName", stock.name).put("quantity", quantity).put("unit", unit).put("updatedAt", System.currentTimeMillis())); replaced = true }
             } else next.put(c)
         }
         if (!replaced) next.put(JSONObject().put("stockName", stock.name).put("quantity", quantity).put("unit", unit))
@@ -264,7 +264,9 @@ class InventoryStore(context: Context) {
                 val components = linkedMapOf<String, JSONObject>()
                 for (source in listOf(current.optJSONArray("components") ?: JSONArray(), incoming.optJSONArray("components") ?: JSONArray())) for (i in 0 until source.length()) {
                     val component = source.optJSONObject(i) ?: continue
-                    components[canonicalProductKey(component.optString("stockName"))] = JSONObject(component.toString())
+                    val componentKey = canonicalProductKey(component.optString("stockName"))
+                    val previous = components[componentKey]
+                    if (previous == null || component.optLong("updatedAt") >= previous.optLong("updatedAt")) components[componentKey] = JSONObject(component.toString())
                 }
                 current.put("components", JSONArray().apply { components.values.forEach { put(it) } }); recipeRoot.put(key, current)
             }
