@@ -46,18 +46,21 @@ fun LiveOperationsDialog(store:Store,onClose:()->Unit,onChanged:()->Unit){
    if(ip.isNotBlank()&&code.isNotBlank()){
     val started=System.currentTimeMillis()
     runCatching{withContext(Dispatchers.IO){
+     val sentOrders=LocalNetworkSync.retryOfflineOrders(ip,code,ctx)
      val queued=store.offlineDeliveryUpdates()
      for(i in 0 until queued.length()){
       val q=queued.getJSONObject(i)
       LocalNetworkSync.pushStatus(ip,code,q.getLong("id"),q.getString("status"),q.optString("actor"),"RIDER")
       store.removeOfflineDeliveryUpdate(0)
      }
-     LocalNetworkSync.pullOrders(ip,code,store)
+     LocalNetworkSync.pullOrders(ip,code,store) to sentOrders
     }}
-     .onSuccess{
-      orders=it
+     .onSuccess{result->
+      orders=result.first
       val elapsed=System.currentTimeMillis()-started
-      message="Connected • ${it.size} orders • ${elapsed} ms • "+store.offlineDeliveryUpdates().length()+" pending"
+      val waiting=ctx.getSharedPreferences("voice_local_network",0).getString("offline_order_queue","[]").orEmpty()
+      val waitingCount=runCatching{org.json.JSONArray(waiting).length()}.getOrDefault(0)
+      message="Connected • ${result.first.size} orders • ${elapsed} ms • ${result.second} queued orders sent • ${waitingCount} waiting • "+store.offlineDeliveryUpdates().length()+" delivery updates pending"
       nextDelay=3000L
      }
      .onFailure{
