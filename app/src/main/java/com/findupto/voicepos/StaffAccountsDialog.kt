@@ -100,9 +100,9 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Owner-only controls for enabling staff access and resetting PINs.")
+                Text(if (session.isNotBlank()) "Owner and Admin staff controls. Admins can manage regular staff; only Owners can manage privileged accounts." else "Sign in as an Owner or Admin on the main POS device to manage staff.")
                 if (host.isBlank() || session.isBlank()) {
-                    Text("Sign in as OWNER on the main device before managing accounts.", color = MaterialTheme.colorScheme.error)
+                    Text("Sign in as OWNER or ADMIN on the main device before managing accounts.", color = MaterialTheme.colorScheme.error)
                 }
                 OutlinedButton(
                     onClick = ::refresh,
