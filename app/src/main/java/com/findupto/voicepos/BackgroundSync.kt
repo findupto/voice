@@ -77,6 +77,7 @@ object PosBackgroundSync {
   WorkManager.getInstance(context.applicationContext).enqueueUniqueWork("voice-pos-sync-now",ExistingWorkPolicy.APPEND_OR_REPLACE,request)
  }
  fun schedule(context:Context){
+  BusinessAutomation.schedule(context)
   val request=PeriodicWorkRequestBuilder<PosBackgroundSyncWorker>(15,TimeUnit.MINUTES)
    .setConstraints(constraints())
    .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS)
