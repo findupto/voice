@@ -201,7 +201,7 @@ object LocalNetworkSync {
    val authenticated=staffSession(session)?:return false
    val account=accounts().optJSONObject(authenticated.name.lowercase(Locale.ROOT))?:return false
    val stored=account.optJSONArray("permissions")
-   val custom=if(stored==null)null else (0 until stored.length()).mapNotNull{stored.optString(it).takeIf(String::isNotBlank)}.toSet()
+   val custom=if(stored==null)null else (0 until stored.length()).mapNotNull{stored.optString(it).takeIf{it.isNotBlank()}}.toSet()
    return permission in RolePermissions.effective(authenticated.role,custom)
   }
   private fun hex(bytes:ByteArray)=bytes.joinToString(""){"%02x".format(it)}
@@ -294,7 +294,7 @@ object LocalNetworkSync {
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val incoming=x.optJSONArray("permissions")?:throw IllegalArgumentException("Permissions list is required")
       require(name.isNotBlank()&&incoming.length()<=RolePermissions.all.size){"Invalid staff name or permission count"}
       val selected=(0 until incoming.length()).map{incoming.getString(it)}.toSet()
-      require(selected.all(RolePermissions::isValid)){"Unknown permission in request"}
+      require(selected.all{RolePermissions.isValid(it)}){"Unknown permission in request"}
       synchronized(accountLock){
        val a=accounts();val target=a.optJSONObject(name.lowercase(Locale.ROOT))?:throw IllegalArgumentException("Staff account not found")
        require(target.optString("role")!="OWNER"){"Owner permissions are fixed and cannot be restricted"}
