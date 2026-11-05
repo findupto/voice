@@ -9,8 +9,9 @@ One Android phone can act as the restaurant's main data server. Staff phones con
 1. Connect all phones to the same local Wi-Fi/hotspot. Internet access is not required.
 2. On the owner phone, open the router icon in the POS toolbar and tap Start Main Server.
 3. Share the displayed local IPv4 address and access code with staff.
-4. Use the owner device's random access code once to enroll the first OWNER account, then sign in as that owner.
-5. The owner creates named staff accounts with individual PINs and roles. Staff connect using the owner IP address and sign in with their assigned name and PIN; synchronization then uses their staff session.
+4. On a clean install, the app seeds four local starter accounts: Owner / `0099`, Admin / `1122`, Waiter / `1234`, and Chef / `1234`. Sign in on the phone that will host the server, then open Network and tap Start Main Server.
+5. Admins and Owners can create named staff accounts with individual PINs and roles. Staff connect using the owner IP address and sign in with their assigned account name and PIN; synchronization then uses their staff session.
+6. Change the starter PINs immediately after setup. These shared starter PINs are convenience credentials, not secure production credentials; do not expose the POS server beyond a trusted private LAN.
 6. Open Live Orders on staff phones. The staff board polls the owner server every four seconds. Waiter order submissions and amendments are sent to the owner; chef status updates and waiter served acknowledgements are recorded on the owner device. Counter checkout can send the completed sale and receipt data back to the owner.
 
 The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/stop a hotspot. The owner phone must remain powered on and the POS app must remain running while it hosts the server. Android may stop background apps under battery pressure.
@@ -18,7 +19,7 @@ The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/sto
 ## Local network notes
 
 - LAN server port: TCP 8765.
-- The server uses a random access code stored on the owner phone. On first setup, use this code to enroll the first OWNER account; no shared default staff PINs are created.
+- A clean install creates the four starter accounts listed above. Existing account databases are never overwritten. The random device access code remains available for the explicit first-owner bootstrap flow when no staff accounts exist.
 - The one-time owner access code is used only for first-owner enrollment. Business sync and live-order endpoints require authenticated staff sessions; full backup sync is OWNER-only.
 - The /health endpoint is a basic LAN connectivity check.
 - Keep the access code within the restaurant team and use a trusted private network.
@@ -30,9 +31,9 @@ The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/sto
 
 ## Staff account security and administration
 
-- The first account must be enrolled as OWNER using the random access code shown on the owner device; predictable shared default PINs are not provisioned.
+- A clean install provisions the starter Owner, Admin, Waiter and Chef accounts. Existing non-empty account stores are preserved; the random access code remains the recovery/bootstrap route for an empty account store.
 - Staff PINs are stored as salted PBKDF2-HMAC-SHA256 hashes. Failed sign-ins are rate-limited, and authenticated sessions expire after 30 days.
-- Owner-only LAN endpoints can list staff accounts, enable or disable an account, reset a staff PIN, and sign out the current session. Disabling an account or resetting its PIN revokes its active sessions. The final active OWNER account cannot be disabled.
+- Owner-only LAN endpoints can list staff accounts, enable or disable an account, reset a staff PIN, and sign out the current session. Admins can enroll additional staff accounts; account-wide security controls remain owner-only. Disabling an account or resetting its PIN revokes its active sessions. The final active OWNER account cannot be disabled.
 - LAN requests reject redirects and oversized request/response bodies. Offline orders are persisted locally, retried in small batches without blocking new order entry, and retained for WorkManager retry until the owner device accepts them; the queue has a 5,000-order safety limit.
 - Android cloud/device-transfer backups exclude staff PIN hashes, active LAN tokens/sessions, and staff messages. Business data continues to use the app's own validated JSON backup and rotating local backup files.
 - **Transport limitation:** the local POS server currently uses HTTP, not TLS. Use only a trusted private Wi-Fi network or phone hotspot; never expose TCP port 8765 to the public internet or forward it from a router. These controls harden the local workflow but do not provide end-to-end encryption.
