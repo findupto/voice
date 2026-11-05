@@ -59,7 +59,7 @@ object VoiceCommandEngine {
         val numeric=Regex("\\b(\\d+)\\b").find(s);if(numeric!=null){val q=numeric.groupValues[1].toIntOrNull()?.coerceIn(1,999)?:1;return q to s.removeRange(numeric.range).replace(Regex("\\s+")," ").trim()}
         return 1 to s
     }
-    private fun splitOrderSegments(s:String):List<String>{val normalized=s.replace(Regex("\\s+and\\s+(?=(?:\\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\\b"),",");return normalized.split(Regex("\\s*(?:,|;|\\bthen\\b|\\band then\\b)\\s*")).map{it.trim()}.filter{it.isNotBlank()}}
+    private fun splitOrderSegments(s:String):List<String>{val normalized=s.replace(Regex("\\s+and\\s+(?=(?:\\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\\b)"),",");return normalized.split(Regex("\\s*(?:,|;|\\bthen\\b|\\band then\\b)\\s*")).map{it.trim()}.filter{it.isNotBlank()}}
     private fun looksLikeQuickSale(raw:String,segment:String,price:Double?):Boolean{if(price==null)return false;val r=norm(raw);return Regex("\\b(add|order|take|give|sell|make|put|buy|need|want)\\b").containsMatchIn(r)||Regex("\\b(price|rupees?|rs|pkr)\\b").containsMatchIn(r)||Regex("\\b\\d+\\s+[a-z]",RegexOption.IGNORE_CASE).containsMatchIn(r)}
     private fun menuItemFromVoice(name:String,price:String):MenuItem?=price.replace(",","").toDoubleOrNull()?.let{p->name.trim().takeIf{it.isNotBlank()}?.let{MenuItem(System.currentTimeMillis(),it,p)}}
     fun parse(raw:String,menu:List<MenuItem> = emptyList()):List<VoiceCommand>{
