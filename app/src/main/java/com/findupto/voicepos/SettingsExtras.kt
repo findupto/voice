@@ -26,7 +26,11 @@ import androidx.compose.ui.unit.dp
     var enabled by remember { mutableStateOf(settings.automationEnabled) }
     var stock by remember { mutableStateOf(settings.lowStockAlerts) }
     var orders by remember { mutableStateOf(settings.delayedOrderAlerts) }
-    var summary by remember { mutableStateOf(settings.dailySummary) }\n    var drafts by remember { mutableStateOf(settings.purchaseDrafts) }\n    var dues by remember { mutableStateOf(settings.overdueDuesAlerts) }\n    var shifts by remember { mutableStateOf(settings.shiftReminders) }\n    var profit by remember { mutableStateOf(settings.profitInsights) }
+    var summary by remember { mutableStateOf(settings.dailySummary) }
+    var drafts by remember { mutableStateOf(settings.purchaseDrafts) }
+    var dues by remember { mutableStateOf(settings.overdueDuesAlerts) }
+    var shifts by remember { mutableStateOf(settings.shiftReminders) }
+    var profit by remember { mutableStateOf(settings.profitInsights) }
     AlertDialog(
         onDismissRequest = close,
         title = { Text("Business Automation") },
@@ -54,6 +58,10 @@ import androidx.compose.ui.unit.dp
                 settings.lowStockAlerts = stock
                 settings.delayedOrderAlerts = orders
                 settings.dailySummary = summary
+                settings.purchaseDrafts = drafts
+                settings.overdueDuesAlerts = dues
+                settings.shiftReminders = shifts
+                settings.profitInsights = profit
                 if (enabled) BusinessAutomation.runNow(context)
                 close()
             }) { Text("SAVE & RUN") }
