@@ -162,6 +162,7 @@ object LocalNetworkSync {
  fun listStaff(ip:String,ownerSession:String):JSONArray=JSONArray(request(ip,ownerSession,"/staff/accounts"))
  fun setStaffActive(ip:String,ownerSession:String,name:String,active:Boolean):String=request(ip,ownerSession,"/staff/accounts/status","POST",JSONObject().put("name",name).put("active",active).toString())
  fun resetStaffPin(ip:String,ownerSession:String,name:String,newPin:String):String=request(ip,ownerSession,"/staff/accounts/pin","POST",JSONObject().put("name",name).put("pin",newPin).toString())
+ fun editStaffAccount(ip:String,ownerSession:String,oldName:String,newName:String,role:String):String=request(ip,ownerSession,"/staff/accounts/edit","POST",JSONObject().put("oldName",oldName).put("newName",newName).put("role",role).toString())
  fun logoutStaff(ip:String,session:String):String=request(ip,session,"/staff/logout","POST",JSONObject().put("ok",true).toString())
  private fun orderJson(s:PendingSale)=JSONObject().apply{
   put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt);put("kitchenProgress",s.kitchenProgress)
@@ -302,6 +303,35 @@ object LocalNetworkSync {
       }
       store.appendOrderAudit(0L,actor,manager.role,if(active)"STAFF_ENABLED" else "STAFF_DISABLED",name)
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("active",active))
+     }
+     session.uri=="/staff/accounts/edit"&&session.method==Method.POST -> {
+      val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(manager.role in setOf("OWNER","ADMIN")){"Only an owner or admin can edit staff accounts"}
+      val x=JSONObject(readBody(session));val oldName=x.optString("oldName").trim();val newName=x.optString("newName").trim();val role=x.optString("role").uppercase()
+      require(oldName.isNotBlank()&&newName.isNotBlank()&&newName.length<=80){"Enter a staff name of 1–80 characters"}
+      require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
+      require(!oldName.equals(manager.name,true)){"You cannot edit your own signed-in account"}
+      synchronized(accountLock){
+       val a=accounts();val oldKey=oldName.lowercase();val target=a.optJSONObject(oldKey)?:throw IllegalArgumentException("Staff account not found")
+       if(manager.role=="ADMIN"){
+        require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot edit owner or admin accounts"}
+        require(role !in setOf("OWNER","ADMIN")){"Only the owner can assign owner or admin roles"}
+       }
+       val newKey=newName.lowercase()
+       require(newKey==oldKey||!a.has(newKey)){"Another staff account already uses that name"}
+       if(target.optString("role")=="OWNER"&&role!="OWNER"){
+        val activeOwners=a.keys().asSequence().mapNotNull{a.optJSONObject(it)}.count{it.optString("role")=="OWNER"&&it.optBoolean("active",true)}
+        require(activeOwners>1){"The last active owner cannot be demoted"}
+       }
+       a.remove(oldKey)
+       target.put("name",newName).put("role",role)
+       a.put(newKey,target)
+       check(authPrefs.edit().putString("accounts",a.toString()).commit()){"Could not save staff account changes"}
+       sessions.entries.removeIf{it.value.name.equals(oldName,true)}
+       persistSessions()
+      }
+      store.appendOrderAudit(0L,manager.name,manager.role,"STAFF_ACCOUNT_EDITED","$oldName → $newName ($role)")
+      json(Response.Status.OK,JSONObject().put("ok",true).put("name",newName).put("role",role).put("sessionsRevoked",true))
      }
      session.uri=="/staff/accounts/pin"&&session.method==Method.POST -> {
       val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
