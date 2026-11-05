@@ -68,10 +68,13 @@ class SupplierPurchaseStore(context: Context) {
 
     @Synchronized fun receive(id: Long, inventory: InventoryStore, supplierDues: SupplierDueStore): Boolean {
         val order = all().firstOrNull { it.id == id } ?: return false
-        if (order.received) return false
+        if (order.received) return true
         val item = inventory.items().firstOrNull { it.id == order.stockItemId } ?: return false
-        if (!inventory.adjustStock(item.id, order.quantity, "Purchase order #$id received from ${order.supplier}")) return false
-        if (order.total > 0.0 && !supplierDues.add(order.supplier, "", "Purchase order #$id • ${order.quantity} ${order.unit} ${order.itemName}", order.total)) return false
+        // Each side effect has a stable purchase-order reference. If a later save
+        // fails, retrying safely completes the remaining steps without duplicating stock or debt.
+        val description = "Purchase order #$id • ${order.quantity} ${order.unit} ${order.itemName}"
+        if (!inventory.receivePurchaseOrder(id, item.id, order.quantity, "Purchase order #$id received from ${order.supplier}")) return false
+        if (order.total > 0.0 && !supplierDues.addOnce("purchase-order:$id", order.supplier, "", description, order.total)) return false
         val updated = order.copy(receivedAt = System.currentTimeMillis())
         val next = JSONArray().apply { all().forEach { put(toJson(if (it.id == id) updated else it)) } }
         return prefs.edit().putString("orders", next.toString()).commit()
