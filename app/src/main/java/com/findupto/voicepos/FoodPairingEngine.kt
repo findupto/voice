@@ -9,7 +9,7 @@ object FoodPairingEngine {
     private fun group(item: MenuItem): Group {
         val text = listOf(item.name, item.variant, item.size).joinToString(" ").lowercase()
         return when {
-            listOf("cola", "soda", "drink", "water", "juice", "tea", "coffee", "shake", "lemonade").any(text::contains) -> Group.DRINK
+            listOf("cola", "soda", "drink", "water", "juice", "tea", "coffee", "shake", "lemonade").any { text.contains(it) } -> Group.DRINK
             listOf("cake", "brownie", "ice cream", "icecream", "cookie", "dessert", "pudding").any(text::contains) -> Group.DESSERT
             listOf("fries", "nugget", "garlic bread", "salad", "dip", "sauce", "wedges", "coleslaw").any(text::contains) -> Group.SIDE
             listOf("pizza", "burger", "shawarma", "roll", "sandwich", "wrap", "pasta", "biryani", "rice", "steak", "wings").any(text::contains) -> Group.MAIN
