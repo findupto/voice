@@ -104,6 +104,10 @@ Owners and Admins can open **Business Automation** from the top toolbar to enabl
 - Alert when tracked ingredients or stock items reach their minimum level.
 - Alert when open restaurant orders have waited at least 15 minutes.
 - Deliver a daily business snapshot with sales count, revenue, recorded expenses, and customer dues.
+- Generate and save suggested purchase-order top-ups from low-stock quantities and estimated item costs; the owner reviews and places the order.
+- Alert when customer dues or supplier bills remain outstanding for 7+ days.
+- Remind owners to review staff shifts left open for 12+ hours.
+- Send a daily estimated profit insight using configured recipe costs and recorded expenses. Items without recipe costing are not included in ingredient-cost estimates.
 - Run an immediate check when the owner saves automation settings.
 
 The existing automatic rotating backup and background device synchronization continue independently. Automation is local-first and works from the primary device; Android battery restrictions and notification permission can affect delivery. It does not silently spend money, change prices, pay suppliers, or place purchase orders. Reordering, refunds, payments, and other financial commitments remain owner-approved.
