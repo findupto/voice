@@ -54,7 +54,8 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
       "Welcome, ${result.getString("name")}."
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
-    if(currentRole=="OWNER"&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("OWNER: CREATE STAFF ACCOUNT")}
+    if(currentRole in setOf("OWNER","ADMIN")&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("${currentRole}: CREATE STAFF ACCOUNT")}
+    TextButton(enabled=!busy,onClick={mode="OWNER_SETUP";message="Use the access code shown on the device hosting the first-time server. This creates the first OWNER account; there are no default Admin credentials."}){Text("FIRST-TIME OWNER SETUP")}
    }else if(mode=="OWNER_SETUP"){
     Text("OWNER SETUP",fontWeight=FontWeight.Bold)
     Text("On the owner's phone: open Network (router icon) → Start Main Server. Copy the Access code shown there.")
