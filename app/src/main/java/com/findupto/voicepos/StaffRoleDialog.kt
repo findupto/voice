@@ -55,7 +55,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
      }){onSaved()}
     },modifier=Modifier.fillMaxWidth()){Text(if(busy)"SIGNING IN…" else "SIGN IN")}
     if(currentRole in setOf("OWNER","ADMIN")&&session.isNotBlank())TextButton(enabled=!busy,onClick={mode="ADD_STAFF";message="Create a separate PIN for each team member."}){Text("${currentRole}: CREATE STAFF ACCOUNT")}
-    TextButton(enabled=!busy,onClick={mode="OWNER_SETUP";message="Use the access code shown on the device hosting the first-time server. This creates the first OWNER account; there are no default Admin credentials."}){Text("FIRST-TIME OWNER SETUP")}
+    TextButton(enabled=!busy,onClick={mode="OWNER_SETUP";message="Use the access code shown on the device hosting the first-time server. This recovery setup is only for an empty staff database."}){Text("FIRST-TIME OWNER SETUP")}
    }else if(mode=="OWNER_SETUP"){
     Text("OWNER SETUP",fontWeight=FontWeight.Bold)
     Text("On the owner's phone: open Network (router icon) → Start Main Server. Copy the Access code shown there.")
@@ -73,7 +73,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
     OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("New 4–8 digit PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
     Text("Choose staff role",style=MaterialTheme.typography.labelMedium)
     Column(verticalArrangement=Arrangement.spacedBy(5.dp)){
-     listOf("WAITER","CHEF","COUNTER","RIDER","DISHWASHER","ADMIN").chunked(3).forEach{group->Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){group.forEach{r->FilterChip(selected=role==r,onClick={role=r},label={Text(r)})}}}
+     (if(currentRole=="OWNER") listOf("WAITER","CHEF","COUNTER","RIDER","DISHWASHER","ADMIN") else listOf("WAITER","CHEF","COUNTER","RIDER","DISHWASHER")).chunked(3).forEach{group->Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){group.forEach{r->FilterChip(selected=role==r,onClick={role=r},label={Text(r)})}}}
     }
     Button(enabled=!busy&&session.isNotBlank()&&ip.isNotBlank()&&name.isNotBlank()&&pin.length in 4..8,onClick={
      runTask({LocalNetworkSync.enrollStaff(ip,session,name,pin,role);"Created ${role} account for $name."}){pin="";name=""}
