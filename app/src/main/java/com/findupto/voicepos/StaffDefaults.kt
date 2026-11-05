@@ -43,6 +43,6 @@ object StaffDefaults {
         // The first-launch device is the local host; its staff session is still
         // established by signing in with the Owner PIN in the Staff Access dialog.
         val localStore = Store(context)
-        if (localStore.staffRole().isBlank()) localStore.setStaffSession("Owner", "OWNER")
+        if (localStore.staffRole() == "GUEST") localStore.setStaffSession("Owner", "OWNER")
     }
 }
