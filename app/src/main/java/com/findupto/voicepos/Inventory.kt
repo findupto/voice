@@ -33,6 +33,15 @@ data class InventoryStockItem(
 data class RecipeComponent(val stockName: String, val quantity: Double, val unit: String)
 data class ProductRecipe(val productName: String, val components: List<RecipeComponent>)
 
+/** Suggested top-up to a target level; invalid stock values produce no reorder quantity. */
+internal fun suggestedReorderQuantity(current: Double, minimum: Double, targetMultiplier: Double = 2.0): Double {
+    if (!current.isFinite() || !minimum.isFinite() || !targetMultiplier.isFinite() ||
+        current < 0.0 || minimum <= 0.0 || targetMultiplier <= 1.0) return 0.0
+    val target = minimum * targetMultiplier
+    if (!target.isFinite()) return 0.0
+    return (target - current).coerceAtLeast(0.0)
+}
+
 internal fun quantityInStockUnit(quantity: Double, recipeUnit: String, stockUnit: String): Double? {
     val from = recipeUnit.trim().lowercase()
     val to = stockUnit.trim().lowercase()
@@ -355,6 +364,7 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
     var tick by remember { mutableIntStateOf(0) }
     val stock = remember(tick) { inventory.items() }
     val recipes = remember(tick) { inventory.recipes() }
+    val reorderPlan = remember(tick) { inventory.lowStock().map { it to suggestedReorderQuantity(it.quantity, it.minimum) }.filter { it.second > 0.0 } }
     AlertDialog(onDismissRequest = close, modifier = Modifier.fillMaxWidth(), title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Inventory & Deals", Modifier.weight(1f), fontWeight = FontWeight.Bold)
@@ -427,7 +437,23 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                         }
                     }
                 }
-                if (inventory.lowStock().isNotEmpty()) Text("Reorder: " + inventory.lowStock().joinToString { "${it.name} (${it.quantity} ${it.unit})" }, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (inventory.lowStock().isNotEmpty()) {
+                    Text("REORDER SUGGESTIONS", fontWeight = FontWeight.Bold)
+                    Text("Suggested quantities top each item up to twice its minimum level. Review supplier availability and adjust before ordering.", style = MaterialTheme.typography.bodySmall)
+                    reorderPlan.forEach { (item, amount) ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.name, fontWeight = FontWeight.SemiBold)
+                                    Text("Now: ${item.quantity} ${item.unit} • Minimum: ${item.minimum} ${item.unit}", style = MaterialTheme.typography.bodySmall)
+                                    Text("Suggested order: ${String.format(java.util.Locale.US, "%.2f", amount)} ${item.unit}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                }
+                                Text(money(amount * item.unitCost), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    Text("Low stock: " + inventory.lowStock().joinToString { "${it.name} (${it.quantity} ${it.unit})" }, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 HorizontalDivider()
                 Text("Recent stock movements", fontWeight = FontWeight.Bold)
                 inventory.recentMovementDetails().forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
