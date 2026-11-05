@@ -29,6 +29,11 @@ class MoneyMathTest {
         assertEquals(1155.0, result.total, 0.000001)
     }
 
+    @Test fun preservesNegativeCartDiscountLines() {
+        CurrencySettings.code = "PKR"
+        assertEquals(-50.0, SaleItem(CART_DISCOUNT_PREFIX, 1, -50.0).total, 0.000001)
+    }
+
     @Test fun rejectsNonFiniteAmounts() {
         assertThrows(IllegalArgumentException::class.java) {
             MoneyMath.round(Double.NaN, "PKR")
