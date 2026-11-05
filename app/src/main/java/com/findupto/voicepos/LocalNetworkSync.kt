@@ -15,6 +15,7 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import java.util.concurrent.ConcurrentHashMap
 import java.util.Collections
+import java.util.Locale
 
 object LocalNetworkSync {
  private const val PORT=8765
@@ -164,6 +165,8 @@ object LocalNetworkSync {
  fun resetStaffPin(ip:String,ownerSession:String,name:String,newPin:String):String=request(ip,ownerSession,"/staff/accounts/pin","POST",JSONObject().put("name",name).put("pin",newPin).toString())
  fun editStaffAccount(ip:String,ownerSession:String,oldName:String,newName:String,role:String):String=request(ip,ownerSession,"/staff/accounts/edit","POST",JSONObject().put("oldName",oldName).put("newName",newName).put("role",role).toString())
  fun logoutStaff(ip:String,session:String):String=request(ip,session,"/staff/logout","POST",JSONObject().put("ok",true).toString())
+ fun staffPermissions(ip:String,ownerSession:String):JSONArray=JSONArray(request(ip,ownerSession,"/staff/accounts/permissions"))
+ fun setStaffPermissions(ip:String,ownerSession:String,name:String,permissions:Set<String>):String=request(ip,ownerSession,"/staff/accounts/permissions","POST",JSONObject().put("name",name).put("permissions",JSONArray(permissions.sorted())).toString())
  private fun orderJson(s:PendingSale)=JSONObject().apply{
   put("id",s.id);put("time",s.time);put("customerName",s.customerName);put("customerPhone",s.customerPhone);put("orderType",s.orderType);put("customerAddress",s.customerAddress);put("shiftPerson",s.shiftPerson);put("tableName",s.tableName);put("waiterName",s.waiterName);put("counterName",s.counterName);put("chefName",s.chefName);put("status",s.status);put("specialInstructions",s.specialInstructions);put("updatedAt",s.updatedAt);put("servedAt",s.servedAt);put("kitchenProgress",s.kitchenProgress)
   put("items",JSONArray().apply{s.items.forEach{put(JSONObject().put("name",it.name).put("qty",it.qty).put("price",it.price).put("kitchen",it.kitchen))}})
@@ -193,7 +196,14 @@ object LocalNetworkSync {
    sessions.forEach { (key,value) -> saved.put(key,JSONObject().put("name",value.name).put("role",value.role).put("expiresAt",value.expiresAt)) }
    authPrefs.edit().putString("sessions",saved.toString()).apply()
   }
-  private fun accounts()=runCatching{JSONObject(authPrefs.getString("accounts","{}")?: "{}")}.getOrDefault(JSONObject())
+  private fun accounts()=runCatching{JSONObject(authPrefs.getString("accounts","{}")?: "{}")}.getOrElse{throw IllegalStateException("Staff authentication data is unreadable; refusing access") }
+  private fun hasPermission(session:IHTTPSession,permission:String):Boolean {
+   val authenticated=staffSession(session)?:return false
+   val account=accounts().optJSONObject(authenticated.name.lowercase(Locale.ROOT))?:return false
+   val stored=account.optJSONArray("permissions")
+   val custom=if(stored==null)null else (0 until stored.length()).mapNotNull{stored.optString(it).takeIf(String::isNotBlank)}.toSet()
+   return permission in RolePermissions.effective(authenticated.role,custom)
+  }
   private fun hex(bytes:ByteArray)=bytes.joinToString(""){"%02x".format(it)}
   private fun unhex(value:String)=value.chunked(2).map{it.toInt(16).toByte()}.toByteArray()
   private fun hashPin(pin:String,salt:ByteArray):String {
@@ -203,7 +213,7 @@ object LocalNetworkSync {
   private fun staffSession(s:IHTTPSession):StaffSession? {
    val key=s.headers["x-pos-session"].orEmpty();val found=sessions[key]?:return null
    if(found.expiresAt<System.currentTimeMillis()){sessions.remove(key);persistSessions();return null}
-   val account=accounts().optJSONObject(found.name.lowercase())
+   val account=accounts().optJSONObject(found.name.lowercase(Locale.ROOT))
    if(account==null||!account.optBoolean("active",true)||account.optString("role")!=found.role){
     sessions.remove(key);persistSessions();return null
    }
@@ -225,7 +235,8 @@ object LocalNetworkSync {
      session.uri=="/staff/login"&&session.method==Method.POST -> {
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
-      val attemptKey=name.lowercase()
+      if(loginAttempts.size>1000)loginAttempts.entries.removeIf{it.value.blockedUntil<System.currentTimeMillis()&&it.value.failures==0}
+      val attemptKey=name.lowercase(Locale.ROOT)
       val attempt=loginAttempts.computeIfAbsent(attemptKey){LoginAttempt()}
       synchronized(attempt){
        require(System.currentTimeMillis()>=attempt.blockedUntil){"Too many incorrect PIN attempts. Try again in a minute."}
@@ -257,10 +268,10 @@ object LocalNetworkSync {
        if(firstAccount)require(role=="OWNER"){"First account must be OWNER"}
        else require(staffSession(session)?.role in setOf("OWNER","ADMIN")){"Only an owner or admin can create staff accounts"}
        if(!firstAccount&&staffSession(session)?.role=="ADMIN")require(role !in setOf("OWNER","ADMIN")){"Admins can create staff accounts but only the owner can create another admin or owner"}
-       val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
+       val key=name.lowercase(Locale.ROOT);require(!a.has(key)){"Staff account already exists"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
-       authPrefs.edit().putString("accounts",a.toString()).commit()
+       check(authPrefs.edit().putString("accounts",a.toString()).commit()){"Could not save the new staff account"}
       }
       store.appendOrderAudit(0L,actor,if(firstSetup)"OWNER" else staffSession(session)?.role?:"OWNER","STAFF_ENROLLED","$name ($role)")
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
@@ -295,7 +306,7 @@ object LocalNetworkSync {
         }
         require(activeOwners>1){"The last active owner cannot be disabled"}
        }
-       target.put("active",active);authPrefs.edit().putString("accounts",a.toString()).commit()
+       target.put("active",active);check(authPrefs.edit().putString("accounts",a.toString()).commit()){"Could not save staff access changes"}
        if(!active){
         sessions.entries.removeIf{it.value.name.equals(name,true)}
         persistSessions()
@@ -344,7 +355,7 @@ object LocalNetworkSync {
        if(manager.role=="ADMIN")require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot reset owner or admin PINs"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        target.put("salt",hex(salt)).put("hash",hashPin(pin,salt))
-       authPrefs.edit().putString("accounts",a.toString()).commit()
+       check(authPrefs.edit().putString("accounts",a.toString()).commit()){"Could not save staff PIN reset"}
        sessions.entries.removeIf{it.value.name.equals(name,true)}
        persistSessions()
       }
@@ -358,12 +369,13 @@ object LocalNetworkSync {
       json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/messages"&&session.method==Method.GET -> {
-      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view communication"}
+      require(hasPermission(session,"view_messages")){"Your staff account cannot view communication"}
       val saved=runCatching{JSONArray(messagePrefs.getString("messages","[]")?:"[]")}.getOrDefault(JSONArray())
       json(Response.Status.OK,saved)
      }
      session.uri=="/messages"&&session.method==Method.POST -> {
       val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(hasPermission(session,"send_messages")){"Your staff account cannot send messages"}
       val x=JSONObject(readBody(session));val id=x.optString("id");val message=x.optString("message").trim()
       require(id.matches(Regex("[A-Za-z0-9_-]{8,80}"))&&message.isNotBlank()&&message.length<=1000){"Message must contain 1–1000 characters"}
       synchronized(messageLock){
@@ -377,26 +389,29 @@ object LocalNetworkSync {
       json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/orders"&&session.method==Method.GET -> {
-      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view live orders"}
+      require(hasPermission(session,"view_orders")){"Your staff account cannot view live orders"}
       json(Response.Status.OK,JSONArray().apply{store.pending().forEach{put(LocalNetworkSync.orderJson(it))}})
      }
      session.uri=="/shifts" -> {
-      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER")){"Your staff role cannot manage shift records"}
-      if(session.method==Method.GET) json(Response.Status.OK,store.shiftsJson()) else {
+      if(session.method==Method.GET) {
+       require(hasPermission(session,"view_shifts")){"Your staff account cannot view shift records"}
+       json(Response.Status.OK,store.shiftsJson())
+      } else {
+       require(hasPermission(session,"manage_shifts")){"Your staff account cannot manage shift records"}
        require(session.method==Method.POST){"Unsupported shift request"}
        val incoming=JSONArray(readBody(session));require(incoming.length()<=2000){"Too many shift records"};store.mergeShifts(incoming);json(Response.Status.OK,JSONObject().put("ok",true).put("count",store.shiftsJson().length()))
       }
      }
      session.uri=="/orders/audit"&&session.method==Method.GET -> {
-      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view order activity"}
+      require(hasPermission(session,"view_audit")){"Your staff account cannot view order activity"}
       json(Response.Status.OK,store.orderAudit())
      }
      session.uri=="/orders/completed"&&session.method==Method.GET -> {
-      require(staffSession(session)?.role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Your staff role cannot view completed orders"}
+      require(hasPermission(session,"view_orders")){"Your staff account cannot view completed orders"}
       json(Response.Status.OK,store.completedOrderIdsJson())
      }
      session.uri=="/orders"&&session.method==Method.POST -> {
-      require(staffSession(session)?.role in setOf("WAITER","OWNER","ADMIN")){"Only a waiter can submit orders"}
+      require(hasPermission(session,"create_order")){"Your staff account cannot submit orders"}
       val body=readBody(session);val x=JSONObject(body);val a=x.getJSONArray("items")
       require(a.length() in 1..100) { "An order must contain 1 to 100 item lines" }
       val items=(0 until a.length()).map{val q=a.getJSONObject(it);val name=q.getString("name").trim();val qty=q.getInt("qty");val price=q.getDouble("price");require(name.isNotBlank()&&name.length<=120){"Invalid item name"};require(qty in 1..999){"Invalid item quantity"};require(price.isFinite()&&price>=0.0){"Invalid item price"};SaleItem(name,qty,price,q.optString("kitchen","FAST_FOOD").also{station->require(station in setOf("FAST_FOOD","GRILLED","MILK_SHAKES","TEA_COFFEE")){"Invalid kitchen station"}})}
@@ -413,11 +428,13 @@ object LocalNetworkSync {
      }
      session.uri=="/orders/kitchen"&&session.method==Method.POST -> {
       val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(hasPermission(session,"update_kitchen")){"Your staff account cannot update kitchen progress"}
       val ok=store.updateKitchenStation(x.getLong("id"),x.getString("station").uppercase(),x.getString("status").uppercase(),authenticated.name,authenticated.role)
       if(!ok)json(Response.Status.CONFLICT,JSONObject().put("error","Kitchen update rejected: check station, role and workflow"))else json(Response.Status.OK,JSONObject().put("ok",true))
      }
      session.uri=="/orders/status"&&session.method==Method.POST -> {
       val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(hasPermission(session,"update_order_status")){"Your staff account cannot update order status"}
       val role=authenticated.role;val actor=authenticated.name
       val id=x.getLong("id");val status=x.getString("status").uppercase()
       require(id>0L&&status in setOf("ACCEPTED","PREPARING","READY","SERVED","OUT_FOR_DELIVERY","DELIVERED","BILLED")){"Invalid order update"}
