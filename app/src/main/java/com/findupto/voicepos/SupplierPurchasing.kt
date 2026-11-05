@@ -27,6 +27,19 @@ data class PurchaseOrder(
     val received: Boolean get() = receivedAt > 0L
 }
 
+class SupplierDirectoryStore(context: Context) {
+    private val prefs = context.getSharedPreferences("voice_supplier_directory_v1", Context.MODE_PRIVATE)
+    fun all(): List<String> {
+        val a = JSONArray(prefs.getString("suppliers", "[]"))
+        return (0 until a.length()).map { a.optString(it).trim() }.filter { it.isNotBlank() }.distinct().sortedBy { it.lowercase() }
+    }
+    fun add(name: String): Boolean {
+        val clean = name.trim()
+        if (clean.isBlank() || all().any { it.equals(clean, true) }) return false
+        val next = JSONArray().apply { (all() + clean).forEach { put(it) } }
+        return prefs.edit().putString("suppliers", next.toString()).commit()
+    }
+}
 class SupplierPurchaseStore(context: Context) {
     private val prefs = context.getSharedPreferences("voice_supplier_purchase_orders_v1", Context.MODE_PRIVATE)
 
@@ -80,6 +93,9 @@ fun SupplierPurchasingManager(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val ordersStore = remember(context) { SupplierPurchaseStore(context) }
+    val directory = remember(context) { SupplierDirectoryStore(context) }
+    var directoryTick by remember { mutableIntStateOf(0) }
+    var newSupplier by remember { mutableStateOf("") }
     var tick by remember { mutableIntStateOf(0) }
     var supplier by remember { mutableStateOf("") }
     var itemName by remember { mutableStateOf("") }
@@ -99,7 +115,19 @@ fun SupplierPurchasingManager(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Create an order, then mark it received when the goods arrive. Receiving adds stock and records the supplier payable.")
-                OutlinedTextField(supplier, { supplier = it }, label = { Text("Supplier name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                var supplierExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = supplierExpanded, onExpandedChange = { supplierExpanded = it }) {
+                    OutlinedTextField(supplier, { supplier = it; supplierExpanded = true }, label = { Text("Supplier name") }, modifier = Modifier.fillMaxWidth().menuAnchor(), singleLine = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supplierExpanded) })
+                    ExposedDropdownMenu(expanded = supplierExpanded, onDismissRequest = { supplierExpanded = false }) {
+                        directory.all().filter { it.contains(supplier, ignoreCase = true) }.forEach { saved ->
+                            DropdownMenuItem(text = { Text(saved) }, onClick = { supplier = saved; supplierExpanded = false })
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    OutlinedTextField(newSupplier, { newSupplier = it }, label = { Text("Add supplier to directory") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedButton(onClick = { if (directory.add(newSupplier)) { supplier = newSupplier.trim(); newSupplier = ""; directoryTick++ } else message = "Supplier already saved or name is empty" }, enabled = newSupplier.isNotBlank()) { Text("SAVE") }
+                }
                 var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                     OutlinedTextField(
@@ -142,6 +170,20 @@ fun SupplierPurchasingManager(
                 ) { Text("CREATE PURCHASE ORDER") }
                 if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()
+                val reorder = inventory.lowStock()
+                if (reorder.isNotEmpty()) {
+                    Text("Reorder suggestions", style = MaterialTheme.typography.titleMedium)
+                    Text("Suggested quantity restores stock to twice its minimum level.", style = MaterialTheme.typography.bodySmall)
+                    reorder.forEach { low ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(low.name, style = MaterialTheme.typography.bodyMedium)
+                                Text("Available ${low.quantity} ${low.unit} • Minimum ${low.minimum}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            OutlinedButton(onClick = { itemName = low.name; quantity = (low.minimum * 2.0 - low.quantity).coerceAtLeast(low.minimum).coerceAtLeast(1.0).toString(); unitCost = low.unitCost.toString() }) { Text("USE") }
+                        }
+                    }
+                }
                 Text("Purchase order history", style = MaterialTheme.typography.titleMedium)
                 LazyColumn(Modifier.heightIn(max = 250.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     items(orders, key = { it.id }) { order ->
