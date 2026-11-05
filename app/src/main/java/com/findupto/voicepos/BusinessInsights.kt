@@ -23,6 +23,7 @@ internal fun averageDailyRevenue(sales: List<Sale>, now: Long = System.currentTi
     return sales.filter { it.time in (start + 1)..now }.sumOf { it.total.coerceAtLeast(0.0) } / days
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BusinessInsightsDialog(
     store: Store,
@@ -41,7 +42,6 @@ fun BusinessInsightsDialog(
     val dailyAverage = averageDailyRevenue(sales, now)
     val best = remember(sales) { bestSellingProducts(sales) }
     val menu = remember(tick) { store.menu() }
-    val recipes = remember(tick) { inventory.recipes().associateBy { canonicalProductKey(it.productName) } }
     val wasteRows = remember(tick) { inventory.recentMovementDetails(100).filter { it.contains("Waste:") } }
     AlertDialog(
         onDismissRequest = close,
