@@ -13,7 +13,11 @@ fun canonicalProductKey(name: String): String {
         words.filterNot { it in portions }).joinToString(" ")
 }
 data class SaleItem(val name: String, val qty: Int, val price: Double, val kitchen: String = "FAST_FOOD") {
-    val total: Double get() = MoneyMath.multiply(price, qty, CurrencySettings.code)
+    val total: Double get() = if (name.startsWith(CART_DISCOUNT_PREFIX) && price <= 0.0) {
+        -MoneyMath.multiply(-price, qty, CurrencySettings.code)
+    } else {
+        MoneyMath.multiply(price, qty, CurrencySettings.code)
+    }
 }
 data class Sale(
     val id: Long, val items: List<SaleItem>, val total: Double, val time: Long,
