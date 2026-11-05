@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
     var dues by remember { mutableStateOf(settings.overdueDuesAlerts) }
     var shifts by remember { mutableStateOf(settings.shiftReminders) }
     var profit by remember { mutableStateOf(settings.profitInsights) }
+    val reorderDrafts = remember(context) { runCatching { org.json.JSONArray(context.getSharedPreferences("voice_business_automation_v1", android.content.Context.MODE_PRIVATE).getString("purchase_order_drafts", "[]")) }.getOrDefault(org.json.JSONArray()) }
     AlertDialog(
         onDismissRequest = close,
         title = { Text("Business Automation") },
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Overdue payment alerts"); Text("Customer and supplier balances 7+ days old", style = MaterialTheme.typography.bodySmall) }; Switch(dues, { dues = it }) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Staff shift reminders"); Text("Flag shifts still open after 12 hours", style = MaterialTheme.typography.bodySmall) }; Switch(shifts, { shifts = it }) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Profit insights"); Text("Estimate recipe cost and net profit daily", style = MaterialTheme.typography.bodySmall) }; Switch(profit, { profit = it }) }
+                Text("Saved reorder draft: " + if (reorderDrafts.length() == 0) "No low-stock items currently flagged." else (0 until reorderDrafts.length()).joinToString { i -> val item = reorderDrafts.optJSONObject(i) ?: org.json.JSONObject(); item.optString("name") + " • " + item.optDouble("quantity") + " " + item.optString("unit") }, style = MaterialTheme.typography.bodySmall)
                 Text("Checks run approximately hourly. Android battery settings and notification permission can affect delivery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
