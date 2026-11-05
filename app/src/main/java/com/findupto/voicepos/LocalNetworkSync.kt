@@ -24,12 +24,12 @@ object LocalNetworkSync {
  private val offlineQueueLock=Any()
  fun token(context:Context):String {
   val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-  return p.getString("access_token",null)?:ByteArray(24).also{SecureRandom().nextBytes(it)}.joinToString(""){"%02x".format(it)}.also{p.edit().putString("access_token",it).apply()}
+  return p.getString("access_token",null)?:ByteArray(24).also{SecureRandom().nextBytes(it)}.joinToString(""){"%02x".format(it)}.also{value->check(p.edit().putString("access_token",value).commit()){"Could not persist the local owner access token"}}
  }
  @Synchronized fun start(context:Context,store:Store):Boolean {
   if(server?.isAlive==true)return true
   val auth=context.getSharedPreferences("voice_staff_auth",Context.MODE_PRIVATE)
-  val accounts=runCatching{JSONObject(auth.getString("accounts","{}")?:"{}")}.getOrDefault(JSONObject())
+  val accounts=runCatching{JSONObject(auth.getString("accounts","{}")?:"{}")}.getOrNull()?:return false
   // Never seed predictable staff PINs. An empty account store may host only
   // long enough for the owner to bootstrap the first OWNER account with the
   // random, device-local access code. Once accounts exist, only OWNER/ADMIN
