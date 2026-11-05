@@ -70,6 +70,7 @@ class SupplierPurchaseStore(context: Context) {
         .put("unitCost", x.unitCost).put("createdAt", x.createdAt).put("receivedAt", x.receivedAt)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SupplierPurchasingManager(
     inventory: InventoryStore,
