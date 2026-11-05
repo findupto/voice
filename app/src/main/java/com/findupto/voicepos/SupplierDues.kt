@@ -11,24 +11,37 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-data class SupplierDue(val id: Long, val supplier: String, val phone: String, val description: String, val total: Double, val paid: Double, val createdAt: Long) {
+data class SupplierDue(val id: Long, val supplier: String, val phone: String, val description: String, val total: Double, val paid: Double, val createdAt: Long, val referenceId: String = "") {
     val balance: Double get() = (total - paid).coerceAtLeast(0.0)
 }
 class SupplierDueStore(context: Context) {
     private val prefs = context.getSharedPreferences("voice_supplier_dues_v1", Context.MODE_PRIVATE)
     fun all(): List<SupplierDue> {
         val a = JSONArray(prefs.getString("entries", "[]"))
-        return (0 until a.length()).mapNotNull { i -> runCatching { a.getJSONObject(i).let { o -> SupplierDue(o.getLong("id"),o.getString("supplier"),o.optString("phone"),o.optString("description"),o.getDouble("total"),o.getDouble("paid"),o.getLong("createdAt")) } }.getOrNull() }.sortedByDescending { it.createdAt }
+        return (0 until a.length()).mapNotNull { i -> runCatching { a.getJSONObject(i).let { o -> SupplierDue(o.getLong("id"),o.getString("supplier"),o.optString("phone"),o.optString("description"),o.getDouble("total"),o.getDouble("paid"),o.getLong("createdAt"),o.optString("referenceId","")) } }.getOrNull() }.sortedByDescending { it.createdAt }
     }
     private fun save(xs: List<SupplierDue>) {
         val a = JSONArray()
-        xs.forEach { x -> a.put(JSONObject().put("id",x.id).put("supplier",x.supplier).put("phone",x.phone).put("description",x.description).put("total",x.total).put("paid",x.paid).put("createdAt",x.createdAt)) }
+        xs.forEach { x -> a.put(JSONObject().put("id",x.id).put("supplier",x.supplier).put("phone",x.phone).put("description",x.description).put("total",x.total).put("paid",x.paid).put("createdAt",x.createdAt).put("referenceId",x.referenceId)) }
         prefs.edit().putString("entries",a.toString()).apply()
     }
     fun add(supplier: String, phone: String, description: String, amount: Double): Boolean {
         if (supplier.isBlank() || amount <= 0.0) return false
         save(all() + SupplierDue(System.currentTimeMillis(),supplier.trim(),phone.trim(),description.trim(),amount,0.0,System.currentTimeMillis()))
         return true
+    }
+    /** Idempotent payable creation for retry-safe purchase-order receiving. */
+    @Synchronized fun addOnce(referenceId: String, supplier: String, phone: String, description: String, amount: Double): Boolean {
+        if (referenceId.isBlank() || supplier.isBlank() || !amount.isFinite() || amount <= 0.0) return false
+        val existing = all()
+        if (existing.any { it.referenceId == referenceId }) return true
+        val now = System.currentTimeMillis()
+        val row = SupplierDue(now, supplier.trim(), phone.trim(), description.trim(), amount, 0.0, now, referenceId)
+        val next = JSONArray().apply {
+            existing.forEach { x -> put(JSONObject().put("id",x.id).put("supplier",x.supplier).put("phone",x.phone).put("description",x.description).put("total",x.total).put("paid",x.paid).put("createdAt",x.createdAt).put("referenceId",x.referenceId)) }
+            put(JSONObject().put("id",row.id).put("supplier",row.supplier).put("phone",row.phone).put("description",row.description).put("total",row.total).put("paid",row.paid).put("createdAt",row.createdAt).put("referenceId",row.referenceId))
+        }
+        return prefs.edit().putString("entries", next.toString()).commit()
     }
     fun update(x: SupplierDue) = save(all().map { if (it.id == x.id) x else it })
     fun remove(id: Long) = save(all().filterNot { it.id == id })
