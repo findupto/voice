@@ -104,6 +104,7 @@ fun SupplierPurchasingManager(
     var message by remember { mutableStateOf("") }
     val stock = remember(tick) { inventory.items() }
     val orders = remember(tick) { ordersStore.all() }
+    val savedSuppliers = remember(directoryTick) { directory.all() }
 
     AlertDialog(
         onDismissRequest = close,
@@ -119,7 +120,7 @@ fun SupplierPurchasingManager(
                 ExposedDropdownMenuBox(expanded = supplierExpanded, onExpandedChange = { supplierExpanded = it }) {
                     OutlinedTextField(supplier, { supplier = it; supplierExpanded = true }, label = { Text("Supplier name") }, modifier = Modifier.fillMaxWidth().menuAnchor(), singleLine = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supplierExpanded) })
                     ExposedDropdownMenu(expanded = supplierExpanded, onDismissRequest = { supplierExpanded = false }) {
-                        directory.all().filter { it.contains(supplier, ignoreCase = true) }.forEach { saved ->
+                        savedSuppliers.filter { it.contains(supplier, ignoreCase = true) }.forEach { saved ->
                             DropdownMenuItem(text = { Text(saved) }, onClick = { supplier = saved; supplierExpanded = false })
                         }
                     }
