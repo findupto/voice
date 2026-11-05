@@ -69,6 +69,10 @@ This is an incremental workflow foundation rather than a certified enterprise de
 - Existing backups without inventory data remain importable and leave the device's current inventory intact.
 
 
+## Inventory reorder suggestions
+
+The Inventory screen highlights items at or below their configured minimum and calculates a suggested top-up to twice that minimum. Each suggestion displays the estimated cost using the saved unit cost. These are review-only recommendations; they do not create purchase orders or send supplier requests automatically.
+
 ## Supplier purchase receipt safety
 
 - Receiving a purchase order records stock with a stable purchase-order movement ID and records the supplier payable with the same unique reference.
