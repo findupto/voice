@@ -3,7 +3,6 @@ package com.findupto.voicepos
 import android.content.Context
 import org.json.JSONObject
 import java.security.MessageDigest
-import java.util.Locale
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
@@ -30,7 +29,9 @@ object StaffDefaults {
 
         val accounts = runCatching {
             JSONObject(prefs.getString("accounts", "{}") ?: "{}")
-        }.getOrDefault(JSONObject())
+        }.getOrElse {
+            error("Staff authentication data is unreadable; refusing to overwrite it")
+        }
 
         legacyPins.forEach { (key, pin) ->
             val account = accounts.optJSONObject(key) ?: return@forEach
