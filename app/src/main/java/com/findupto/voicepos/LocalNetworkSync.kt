@@ -276,6 +276,34 @@ object LocalNetworkSync {
       store.appendOrderAudit(0L,actor,if(firstSetup)"OWNER" else staffSession(session)?.role?:"OWNER","STAFF_ENROLLED","$name ($role)")
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
      }
+     session.uri=="/staff/accounts/permissions"&&session.method==Method.GET -> {
+      require(isOwner(session)){"Only the owner can inspect detailed staff permissions"}
+      val result=JSONArray()
+      synchronized(accountLock){
+       val a=accounts();a.keys().forEach{key->val item=a.optJSONObject(key)?:return@forEach
+        val role=item.optString("role")
+        val stored=item.optJSONArray("permissions")
+        val effective=if(stored==null)RolePermissions.defaultsFor(role) else (0 until stored.length()).mapNotNull{stored.optString(it).takeIf(String::isNotBlank)}.toSet()
+        result.put(JSONObject().put("name",item.optString("name")).put("role",role).put("permissions",JSONArray(effective.sorted())).put("customized",stored!=null))
+       }
+      }
+      json(Response.Status.OK,result)
+     }
+     session.uri=="/staff/accounts/permissions"&&session.method==Method.POST -> {
+      require(isOwner(session)){"Only the owner can customize staff permissions"}
+      val x=JSONObject(readBody(session));val name=x.optString("name").trim();val incoming=x.optJSONArray("permissions")?:throw IllegalArgumentException("Permissions list is required")
+      require(name.isNotBlank()&&incoming.length()<=RolePermissions.all.size){"Invalid staff name or permission count"}
+      val selected=(0 until incoming.length()).map{incoming.getString(it)}.toSet()
+      require(selected.all(RolePermissions::isValid)){"Unknown permission in request"}
+      synchronized(accountLock){
+       val a=accounts();val target=a.optJSONObject(name.lowercase(Locale.ROOT))?:throw IllegalArgumentException("Staff account not found")
+       require(target.optString("role")!="OWNER"){"Owner permissions are fixed and cannot be restricted"}
+       target.put("permissions",JSONArray(selected.sorted()))
+       check(authPrefs.edit().putString("accounts",a.toString()).commit()){"Could not save staff permissions"}
+      }
+      store.appendOrderAudit(0L,staffSession(session)?.name?:"Owner","OWNER","STAFF_PERMISSIONS_UPDATED","$name: ${selected.sorted().joinToString()}")
+      json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("permissions",JSONArray(selected.sorted())))
+     }
      session.uri=="/staff/accounts"&&session.method==Method.GET -> {
       val viewer=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
       require(viewer.role in setOf("OWNER","ADMIN")){"Only an owner or admin can view staff accounts"}
