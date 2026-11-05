@@ -372,12 +372,13 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                     OutlinedTextField(cost, { cost = it }, label = { Text("Cost per unit") }, modifier = Modifier.weight(1f), singleLine = true)
                 }
                 Button(onClick = {
-                    var ok = inventory.addItem(name, category, qty.toDoubleOrNull() ?: -1.0, unit, minimum.toDoubleOrNull() ?: -1.0, cost.toDoubleOrNull() ?: -1.0)
+                    val duplicateBarcode = barcode.isNotBlank() && inventory.findByBarcode(barcode) != null
+                    var ok = !duplicateBarcode && inventory.addItem(name, category, qty.toDoubleOrNull() ?: -1.0, unit, minimum.toDoubleOrNull() ?: -1.0, cost.toDoubleOrNull() ?: -1.0)
                     if (ok && barcode.isNotBlank()) {
                         val saved = inventory.items().firstOrNull { canonicalProductKey(it.name) == canonicalProductKey(name) }
                         ok = saved != null && inventory.updateBarcode(saved.id, barcode)
                     }
-                    message = if (ok) "Stock item saved" else "Check fields, barcode uniqueness, or use a unique item name"
+                    message = if (ok) "Stock item saved" else if (duplicateBarcode) "This barcode is already assigned to another item" else "Check fields or use a unique item name"
                     if (ok) { name = ""; barcode = ""; qty = "0"; minimum = "0"; cost = "0"; tick++; refresh() }
                 }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("ADD STOCK ITEM") }
                 val stockValue = stock.sumOf { it.quantity.coerceAtLeast(0.0) * it.unitCost }
