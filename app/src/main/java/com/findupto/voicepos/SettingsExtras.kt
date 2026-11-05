@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
     var enabled by remember { mutableStateOf(settings.automationEnabled) }
     var stock by remember { mutableStateOf(settings.lowStockAlerts) }
     var orders by remember { mutableStateOf(settings.delayedOrderAlerts) }
-    var summary by remember { mutableStateOf(settings.dailySummary) }
+    var summary by remember { mutableStateOf(settings.dailySummary) }\n    var drafts by remember { mutableStateOf(settings.purchaseDrafts) }\n    var dues by remember { mutableStateOf(settings.overdueDuesAlerts) }\n    var shifts by remember { mutableStateOf(settings.shiftReminders) }\n    var profit by remember { mutableStateOf(settings.profitInsights) }
     AlertDialog(
         onDismissRequest = close,
         title = { Text("Business Automation") },
@@ -41,6 +41,10 @@ import androidx.compose.ui.unit.dp
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Low-stock alerts"); Text("Notify when ingredients reach minimum", style = MaterialTheme.typography.bodySmall) }; Switch(stock, { stock = it }) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Delayed-order alerts"); Text("Notify when open orders wait 15+ minutes", style = MaterialTheme.typography.bodySmall) }; Switch(orders, { orders = it }) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Daily business snapshot"); Text("Sales, revenue, expenses and customer dues", style = MaterialTheme.typography.bodySmall) }; Switch(summary, { summary = it }) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Purchase-order drafts"); Text("Prepare suggested top-ups; owner approves orders", style = MaterialTheme.typography.bodySmall) }; Switch(drafts, { drafts = it }) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Overdue payment alerts"); Text("Customer and supplier balances 7+ days old", style = MaterialTheme.typography.bodySmall) }; Switch(dues, { dues = it }) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Staff shift reminders"); Text("Flag shifts still open after 12 hours", style = MaterialTheme.typography.bodySmall) }; Switch(shifts, { shifts = it }) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Profit insights"); Text("Estimate recipe cost and net profit daily", style = MaterialTheme.typography.bodySmall) }; Switch(profit, { profit = it }) }
                 Text("Checks run approximately hourly. Android battery settings and notification permission can affect delivery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
