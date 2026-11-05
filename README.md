@@ -111,3 +111,7 @@ Owners and Admins can open **Business Automation** from the top toolbar to enabl
 - Run an immediate check when the owner saves automation settings.
 
 The existing automatic rotating backup and background device synchronization continue independently. Automation is local-first and works from the primary device; Android battery restrictions and notification permission can affect delivery. It does not silently spend money, change prices, pay suppliers, or place purchase orders. Reordering, refunds, payments, and other financial commitments remain owner-approved.
+
+## Owner insights and waste controls
+
+The Owner Insights screen provides a simple seven-day average sales forecast, best-selling products ranked by units sold, and menu pricing guidance for products with configured recipe costs. Pricing suggestions target a configurable-in-code 30% gross margin reference and never change menu prices automatically. The screen also records ingredient waste with quantity and reason, deducts it from stock through the inventory movement ledger, and shows recent waste entries. Forecasts are directional estimates based on recent recorded sales; they do not account for seasonality or external demand changes.
