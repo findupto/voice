@@ -64,9 +64,17 @@ object StaffDefaults {
     }
 
     private fun ensureOwnerBootstrap(context: Context) {
+        val prefs = context.getSharedPreferences("voice_staff_auth", Context.MODE_PRIVATE)
+        val accounts = runCatching {
+            JSONObject(prefs.getString("accounts", "{}") ?: "{}")
+        }.getOrElse {
+            error("Staff authentication data is unreadable; owner bootstrap is blocked")
+        }
+        // Grant the temporary local owner host role only before the first account
+        // exists. Never silently restore owner access after a real logout.
         val localStore = Store(context)
-        if (localStore.staffRole() == "GUEST") {
-            localStore.setStaffSession("Owner", "OWNER")
+        if (accounts.length() == 0 && localStore.staffRole() == "GUEST") {
+            localStore.setStaffSession("Owner setup", "OWNER")
         }
     }
 
