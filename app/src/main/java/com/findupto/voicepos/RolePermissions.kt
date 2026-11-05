@@ -8,8 +8,7 @@ object RolePermissions {
     val all = setOf(
         "view_orders", "create_order", "update_order_status", "update_kitchen",
         "view_messages", "send_messages", "view_shifts", "manage_shifts",
-        "view_audit", "view_financials", "manage_menu", "manage_inventory",
-        "manage_discounts", "manage_staff"
+        "view_audit", "manage_staff"
     )
 
     private val defaults = mapOf(
