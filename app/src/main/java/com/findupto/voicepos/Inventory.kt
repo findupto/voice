@@ -316,6 +316,7 @@ class InventoryStore(context: Context) {
     }
 }
 
+@OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
 fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> Unit, refresh: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
