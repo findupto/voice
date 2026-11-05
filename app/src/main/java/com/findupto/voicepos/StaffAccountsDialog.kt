@@ -36,6 +36,9 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
     var editTarget by remember { mutableStateOf<ManagedStaffAccount?>(null) }
     var editName by remember { mutableStateOf("") }
     var editRole by remember { mutableStateOf("WAITER") }
+    var permissionTarget by remember { mutableStateOf<ManagedStaffAccount?>(null) }
+    var selectedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var permissionBusy by remember { mutableStateOf(false) }
 
     fun refresh() {
         if (loading || busyName.isNotBlank()) return
@@ -90,6 +93,41 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                 message = "PIN reset for ${account.name}. Their previous sessions were revoked."
                 refresh()
             }.onFailure { message = it.message ?: "Could not reset PIN." }
+        }
+    }
+
+    fun openPermissions(account: ManagedStaffAccount) {
+        if (permissionBusy || busyName.isNotBlank()) return
+        permissionBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { LocalNetworkSync.staffPermissions(host, session) }
+            }
+            permissionBusy = false
+            result.onSuccess { json ->
+                val row = (0 until json.length()).mapNotNull { json.optJSONObject(it) }
+                    .firstOrNull { it.optString("name").equals(account.name, true) }
+                selectedPermissions = row?.optJSONArray("permissions")?.let { array ->
+                    (0 until array.length()).mapNotNull { array.optString(it).takeIf { value -> value.isNotBlank() } }.toSet()
+                } ?: RolePermissions.defaultsFor(account.role)
+                permissionTarget = account
+            }.onFailure { message = it.message ?: "Could not load permissions." }
+        }
+    }
+
+    fun savePermissions(account: ManagedStaffAccount) {
+        if (permissionBusy) return
+        permissionBusy = true
+        val permissions = selectedPermissions
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { LocalNetworkSync.setStaffPermissions(host, session, account.name, permissions) }
+            }
+            permissionBusy = false
+            result.onSuccess {
+                permissionTarget = null
+                message = "Permissions updated for ${account.name}. Changes apply immediately."
+            }.onFailure { message = it.message ?: "Could not update permissions." }
         }
     }
 
@@ -157,6 +195,10 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                                     onClick = { resetTarget = account; newPin = "" },
                                     enabled = busyName.isBlank()
                                 ) { Text("RESET PIN") }
+                                if (account.role != "OWNER") TextButton(
+                                    onClick = { openPermissions(account) },
+                                    enabled = busyName.isBlank() && !permissionBusy
+                                ) { Text("PERMISSIONS") }
                             }
                         }
                     }
@@ -198,6 +240,57 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                 ) { Text(if (busyName == account.name) "SAVING…" else "SAVE CHANGES") }
             },
             dismissButton = { TextButton(onClick = { editTarget = null }) { Text("CANCEL") } }
+        )
+    }
+
+    permissionTarget?.let { account ->
+        AlertDialog(
+            onDismissRequest = { if (!permissionBusy) permissionTarget = null },
+            title = { Text("Permissions — ${account.name}") },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("Choose exactly what this staff account can do. Changes are enforced by the main device, not just hidden in the interface.", style = MaterialTheme.typography.bodySmall)
+                    val labels = mapOf(
+                        "view_orders" to "View live and completed orders",
+                        "create_order" to "Create / submit orders",
+                        "update_order_status" to "Advance order workflow",
+                        "update_kitchen" to "Update kitchen station progress",
+                        "view_messages" to "Read team messages",
+                        "send_messages" to "Send team messages",
+                        "view_shifts" to "View shift records",
+                        "manage_shifts" to "Synchronize / manage shifts",
+                        "view_audit" to "View order activity audit",
+                        "view_financials" to "View financial reports",
+                        "manage_menu" to "Manage menu and prices",
+                        "manage_inventory" to "Manage inventory",
+                        "manage_discounts" to "Manage discounts",
+                        "manage_staff" to "Manage staff accounts"
+                    )
+                    RolePermissions.all.sorted().forEach { permission ->
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = permission in selectedPermissions,
+                                onCheckedChange = { checked ->
+                                    selectedPermissions = if (checked) selectedPermissions + permission else selectedPermissions - permission
+                                },
+                                enabled = !permissionBusy
+                            )
+                            Text(labels[permission] ?: permission, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { savePermissions(account) }, enabled = !permissionBusy) {
+                    Text(if (permissionBusy) "SAVING…" else "SAVE PERMISSIONS")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { permissionTarget = null }, enabled = !permissionBusy) { Text("CANCEL") }
+            }
         )
     }
 
