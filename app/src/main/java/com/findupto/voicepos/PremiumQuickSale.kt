@@ -22,7 +22,7 @@ fun PremiumQuickSale(
     val products = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
     val discountAmount = cartDiscount(cart)
     val subtotal = cartProductSubtotal(cart)
-    val total = cart.sumOf { it.total }
+    val total = MoneyMath.round(cart.sumOf { it.total }, CurrencySettings.code)
     val pairings = remember(menu, products) { FoodPairingEngine.suggest(menu, products) }
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)) {
