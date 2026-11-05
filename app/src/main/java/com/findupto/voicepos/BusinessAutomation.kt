@@ -7,6 +7,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import java.util.Calendar
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** User-controlled, local-first business alerts. Actions with financial impact remain owner-approved. */
