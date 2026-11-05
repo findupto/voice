@@ -48,7 +48,20 @@ class SupplierDueStore(context: Context) {
 }
 @Composable
 fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val purchaseStore = remember(context) { SupplierPurchaseStore(context) }
     var rows by remember { mutableStateOf(store.all()) }
+    var purchaseOrders by remember { mutableStateOf(purchaseStore.all()) }
+    val supplierSummaries = remember(rows, purchaseOrders) {
+        (rows.map { it.supplier } + purchaseOrders.map { it.supplier })
+            .filter { it.isNotBlank() }.distinctBy { it.trim().lowercase(java.util.Locale.ROOT) }
+            .sortedBy { it.lowercase(java.util.Locale.ROOT) }
+            .map { name ->
+                val dues = rows.filter { it.supplier.equals(name, true) }
+                val orders = purchaseOrders.filter { it.supplier.equals(name, true) }
+                SupplierSummary(name, orders.sumOf { it.total }, orders.count { it.received }, orders.count { !it.received }, dues.sumOf { it.paid }, dues.sumOf { it.balance })
+            }
+    }
     var addMode by remember { mutableStateOf(false) }
     var supplier by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -61,7 +74,20 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
         title = { Text("Supplier / Vendor Payables") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Outstanding: ${CurrencySettings.symbol} " + rows.sumOf { it.balance }.formatMoney())
+                Text("Outstanding payable: ${CurrencySettings.symbol} " + rows.sumOf { it.balance }.formatMoney(), style = MaterialTheme.typography.titleSmall)
+                Text("SUPPLIER SUMMARY", style = MaterialTheme.typography.titleMedium)
+                if (supplierSummaries.isEmpty()) Text("No supplier purchases or payables yet.", style = MaterialTheme.typography.bodySmall)
+                LazyColumn(Modifier.heightIn(max = 170.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    items(supplierSummaries, key = { it.name.lowercase(java.util.Locale.ROOT) }) { summary ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(summary.name, style = MaterialTheme.typography.titleSmall)
+                                Text("Purchased: ${CurrencySettings.symbol} ${summary.purchased.formatMoney()} • Paid: ${CurrencySettings.symbol} ${summary.paid.formatMoney()}", style = MaterialTheme.typography.bodySmall)
+                                Text("Received orders: ${summary.receivedOrders} • Pending: ${summary.pendingOrders} • Outstanding: ${CurrencySettings.symbol} ${summary.outstanding.formatMoney()}", style = MaterialTheme.typography.bodySmall, color = if (summary.outstanding > 0.005) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
+                            }
+                        }
+                    }
+                }
                 Button(onClick = { addMode = !addMode }) { Text(if (addMode) "CANCEL ADD" else "ADD SUPPLIER DUE") }
                 if (addMode) {
                     OutlinedTextField(supplier,{supplier=it},label={Text("Supplier / vendor name")},singleLine=true)
@@ -97,4 +123,12 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
             dismissButton={TextButton(onClick={paying=null}){Text("CANCEL")}})
     }
 }
+private data class SupplierSummary(
+    val name: String,
+    val purchased: Double,
+    val receivedOrders: Int,
+    val pendingOrders: Int,
+    val paid: Double,
+    val outstanding: Double
+)
 private fun Double.formatMoney(): String = String.format(java.util.Locale.US,"%,.2f",this)
