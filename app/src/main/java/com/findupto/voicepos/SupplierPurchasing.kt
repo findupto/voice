@@ -56,7 +56,7 @@ class SupplierPurchaseStore(context: Context) {
     }
 
     @Synchronized fun create(supplier: String, item: InventoryStockItem, quantity: Double, unitCost: Double): Boolean {
-        if (supplier.isBlank() || !quantity.isFinite() || quantity <= 0.0 || !unitCost.isFinite() || unitCost < 0.0) return false
+        if (supplier.isBlank() || !quantity.isFinite() || quantity <= 0.0 || !unitCost.isFinite() || unitCost < 0.0 || !(quantity * unitCost).isFinite()) return false
         val now = System.currentTimeMillis()
         val row = PurchaseOrder(now, supplier.trim(), item.id, item.name, quantity, item.unit, unitCost, now)
         val next = JSONArray().apply {
