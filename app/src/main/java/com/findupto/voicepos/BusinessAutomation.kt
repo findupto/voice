@@ -42,7 +42,8 @@ class BusinessAutomationStore(context: Context) {
 }
 
 class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
-    override fun doWork(): Result = try {
+    override fun doWork(): Result {
+        return try {
         val store = Store(applicationContext)
         if (store.staffRole() !in setOf("OWNER", "ADMIN")) return Result.success()
         val settings = BusinessAutomationStore(applicationContext)
@@ -139,7 +140,8 @@ class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Wor
         }
         prefs.edit().putLong("last_run", now).apply()
         Result.success()
-    } catch (_: Exception) { Result.retry() }
+        } catch (_: Exception) { Result.retry() }
+    }
 }
 
 object BusinessAutomation {
