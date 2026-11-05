@@ -174,17 +174,18 @@ fun SupplierPurchasingManager(
                 ) { Text("CREATE PURCHASE ORDER") }
                 if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()
-                val reorder = inventory.lowStock()
+                val reorder = inventory.lowStock().map { it to suggestedReorderQuantity(it.quantity, it.minimum) }.filter { it.second > 0.0 }
                 if (reorder.isNotEmpty()) {
                     Text("Reorder suggestions", style = MaterialTheme.typography.titleMedium)
-                    Text("Suggested quantity restores stock to twice its minimum level.", style = MaterialTheme.typography.bodySmall)
-                    reorder.forEach { low ->
+                    Text("Suggested quantity restores stock to twice its minimum level. Estimated cost uses the saved unit cost.", style = MaterialTheme.typography.bodySmall)
+                    reorder.forEach { (low, suggestedQty) ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(low.name, style = MaterialTheme.typography.bodyMedium)
                                 Text("Available ${low.quantity} ${low.unit} • Minimum ${low.minimum}", style = MaterialTheme.typography.bodySmall)
+                                Text("Order ${String.format(Locale.US, "%.2f", suggestedQty)} ${low.unit} • Est. ${CurrencySettings.symbol} ${String.format(Locale.US, "%,.2f", suggestedQty * low.unitCost)}", style = MaterialTheme.typography.bodySmall)
                             }
-                            OutlinedButton(onClick = { itemName = low.name; quantity = (low.minimum * 2.0 - low.quantity).coerceAtLeast(low.minimum).coerceAtLeast(1.0).toString(); unitCost = low.unitCost.toString() }) { Text("USE") }
+                            OutlinedButton(onClick = { itemName = low.name; quantity = suggestedQty.toString(); unitCost = low.unitCost.toString() }) { Text("USE") }
                         }
                     }
                 }
