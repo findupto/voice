@@ -263,10 +263,6 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                         "view_shifts" to "View shift records",
                         "manage_shifts" to "Synchronize / manage shifts",
                         "view_audit" to "View order activity audit",
-                        "view_financials" to "View financial reports",
-                        "manage_menu" to "Manage menu and prices",
-                        "manage_inventory" to "Manage inventory",
-                        "manage_discounts" to "Manage discounts",
                         "manage_staff" to "Manage staff accounts"
                     )
                     RolePermissions.all.sorted().forEach { permission ->
