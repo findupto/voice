@@ -255,6 +255,7 @@ object LocalNetworkSync {
        val firstAccount=a.length()==0
        if(firstAccount)require(role=="OWNER"){"First account must be OWNER"}
        else require(staffSession(session)?.role in setOf("OWNER","ADMIN")){"Only an owner or admin can create staff accounts"}
+       if(!firstAccount&&staffSession(session)?.role=="ADMIN")require(role !in setOf("OWNER","ADMIN")){"Admins can create staff accounts but only the owner can create another admin or owner"}
        val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
@@ -264,22 +265,26 @@ object LocalNetworkSync {
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
      }
      session.uri=="/staff/accounts"&&session.method==Method.GET -> {
-      require(staffSession(session)?.role=="OWNER"){"Only the owner can view staff accounts"}
+      val viewer=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(viewer.role in setOf("OWNER","ADMIN")){"Only an owner or admin can view staff accounts"}
       val result=JSONArray()
       synchronized(accountLock){
        val a=accounts();a.keys().forEach{key->val item=a.optJSONObject(key)?:return@forEach
+        if(viewer.role=="ADMIN"&&item.optString("role") in setOf("OWNER","ADMIN"))return@forEach
         result.put(JSONObject().put("name",item.optString("name")).put("role",item.optString("role")).put("active",item.optBoolean("active",true)))
        }
       }
       json(Response.Status.OK,result)
      }
      session.uri=="/staff/accounts/status"&&session.method==Method.POST -> {
-      require(staffSession(session)?.role=="OWNER"){"Only the owner can change staff access"}
-      val actor=staffSession(session)?.name?:"Owner"
+      val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(manager.role in setOf("OWNER","ADMIN")){"Only an owner or admin can change staff access"}
+      val actor=manager.name
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val active=x.getBoolean("active")
       require(name.isNotBlank()){"Staff name is required"}
       synchronized(accountLock){
        val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
+       if(manager.role=="ADMIN")require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot change owner or admin accounts"}
        if(!active&&target.optString("role")=="OWNER"){
         var activeOwners=0
         val ownerKeys=a.keys()
@@ -295,23 +300,25 @@ object LocalNetworkSync {
         persistSessions()
        }
       }
-      store.appendOrderAudit(0L,actor,"OWNER",if(active)"STAFF_ENABLED" else "STAFF_DISABLED",name)
+      store.appendOrderAudit(0L,actor,manager.role,if(active)"STAFF_ENABLED" else "STAFF_DISABLED",name)
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("active",active))
      }
      session.uri=="/staff/accounts/pin"&&session.method==Method.POST -> {
-      require(staffSession(session)?.role=="OWNER"){"Only the owner can reset staff PINs"}
-      val actor=staffSession(session)?.name?:"Owner"
+      val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
+      require(manager.role in setOf("OWNER","ADMIN")){"Only an owner or admin can reset staff PINs"}
+      val actor=manager.name
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
       require(name.isNotBlank()&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       synchronized(accountLock){
        val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
+       if(manager.role=="ADMIN")require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot reset owner or admin PINs"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        target.put("salt",hex(salt)).put("hash",hashPin(pin,salt))
        authPrefs.edit().putString("accounts",a.toString()).commit()
        sessions.entries.removeIf{it.value.name.equals(name,true)}
        persistSessions()
       }
-      store.appendOrderAudit(0L,actor,"OWNER","STAFF_PIN_RESET",name)
+      store.appendOrderAudit(0L,actor,manager.role,"STAFF_PIN_RESET",name)
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("sessionsRevoked",true))
      }
      session.uri=="/staff/logout"&&session.method==Method.POST -> {
