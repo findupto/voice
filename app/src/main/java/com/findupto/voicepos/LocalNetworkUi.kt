@@ -16,12 +16,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Suppress("UnsafeOptInUsageError")
 @Composable
 fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("voice_local_network", 0) }
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var health by remember { mutableStateOf("") }
+    var queueCount by remember { mutableIntStateOf(LocalNetworkSync.offlineOrderQueueCount(context)) }
     var hosting by remember { mutableStateOf(LocalNetworkSync.isRunning()) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Connect staff phones to the same Wi-Fi or hotspot, then scan this QR code.") }
@@ -81,6 +88,34 @@ fun LocalNetworkDialog(store: Store, onClose: () -> Unit) {
                 Text("STAFF DEVICE", fontWeight = FontWeight.Bold)
                 Text(if (pairedAddress.isBlank()) "Scan the Admin server QR code once. Then sign in with your own staff name and PIN." else "Paired address: $pairedAddress")
                 OutlinedButton(onClick = { scanner.launch(Intent(context, LiveQrScannerActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) { Text("SCAN ADMIN SERVER QR") }
+                if (pairedAddress.isNotBlank()) {
+                    OutlinedButton(
+                        onClick = {
+                            if (!checking) {
+                                checking = true
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching { LocalNetworkSync.testConnection(pairedAddress) }
+                                    }
+                                    checking = false
+                                    queueCount = LocalNetworkSync.offlineOrderQueueCount(context)
+                                    health = result.fold(
+                                        { "Connected successfully • $pairedAddress" },
+                                        { "Connection failed • ${it.message ?: "Check Wi-Fi, IP address and server status"}" }
+                                    )
+                                }
+                            }
+                        },
+                        enabled = !checking,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (checking) "TESTING CONNECTION…" else "TEST CONNECTION") }
+                    if (health.isNotBlank()) Text(
+                        health,
+                        color = if (health.startsWith("Connected")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text("Offline orders waiting to sync: $queueCount", style = MaterialTheme.typography.bodySmall)
+                }
                 Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             }
         },
