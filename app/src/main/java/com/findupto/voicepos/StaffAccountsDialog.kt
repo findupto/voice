@@ -33,6 +33,9 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
     var message by remember { mutableStateOf("Load staff accounts from the main POS device.") }
     var resetTarget by remember { mutableStateOf<ManagedStaffAccount?>(null) }
     var newPin by remember { mutableStateOf("") }
+    var editTarget by remember { mutableStateOf<ManagedStaffAccount?>(null) }
+    var editName by remember { mutableStateOf("") }
+    var editRole by remember { mutableStateOf("WAITER") }
 
     fun refresh() {
         if (loading || busyName.isNotBlank()) return
@@ -90,6 +93,23 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
         }
     }
 
+    fun saveEdit(account: ManagedStaffAccount) {
+        val updatedName = editName.trim()
+        if (updatedName.isBlank() || updatedName.length > 80 || busyName.isNotBlank()) return
+        busyName = account.name
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { LocalNetworkSync.editStaffAccount(host, session, account.name, updatedName, editRole) }
+            }
+            busyName = ""
+            result.onSuccess {
+                editTarget = null
+                message = "Updated $updatedName ($editRole). Their previous sessions were revoked."
+                refresh()
+            }.onFailure { message = it.message ?: "Could not edit account." }
+        }
+    }
+
     LaunchedEffect(host, session) { refresh() }
 
     AlertDialog(
@@ -130,6 +150,10 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                                     enabled = busyName.isBlank() && account.name.isNotBlank()
                                 ) { Text(if (account.active) "DISABLE" else "ENABLE") }
                                 TextButton(
+                                    onClick = { editTarget = account; editName = account.name; editRole = account.role },
+                                    enabled = busyName.isBlank()
+                                ) { Text("EDIT") }
+                                TextButton(
                                     onClick = { resetTarget = account; newPin = "" },
                                     enabled = busyName.isBlank()
                                 ) { Text("RESET PIN") }
@@ -142,6 +166,44 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onClose) { Text("CLOSE") } }
     )
+
+    editTarget?.let { account ->
+        AlertDialog(
+            onDismissRequest = { editTarget = null },
+            title = { Text("Edit staff — ${account.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it.take(80) },
+                        label = { Text("Staff name") },
+                        singleLine = true
+                    )
+                    Text("Staff role", style = MaterialTheme.typography.labelMedium)
+                    val roles = if (account.role in setOf("OWNER", "ADMIN")) {
+                        listOf("OWNER", "ADMIN", "COUNTER", "WAITER", "CHEF", "DISHWASHER", "RIDER")
+                    } else {
+                        listOf("COUNTER", "WAITER", "CHEF", "DISHWASHER", "RIDER") +
+                            if (account.role == "ADMIN") listOf("ADMIN") else emptyList()
+                    }
+                    roles.forEach { role ->
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            RadioButton(selected = editRole == role, onClick = { editRole = role })
+                            Text(role)
+                        }
+                    }
+                    Text("Changing the name or role signs this staff member out on all devices.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { saveEdit(account) },
+                    enabled = editName.isNotBlank() && busyName.isBlank()
+                ) { Text(if (busyName == account.name) "SAVING…" else "SAVE CHANGES") }
+            },
+            dismissButton = { TextButton(onClick = { editTarget = null }) { Text("CANCEL") } }
+        )
+    }
 
     resetTarget?.let { account ->
         AlertDialog(
