@@ -46,12 +46,14 @@ private fun shareText(context: android.content.Context, title: String, body: Str
 private fun shareCustomerQuotation(context: android.content.Context, order: PendingSale, profile: CompanyProfile) {
     runCatching {
         val items = order.items.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
-        val subtotal = items.sumOf { it.total }
+        val subtotal = MoneyMath.round(items.sumOf { it.total }, profile.currencyCode)
         val discount = cartDiscount(order.items).coerceAtMost(subtotal)
-        val net = (subtotal - discount).coerceAtLeast(0.0)
-        val service = if (profile.serviceChargeEnabled) net * profile.serviceChargeRate / 100.0 else 0.0
-        val tax = if (profile.taxEnabled) (net + service) * profile.taxRate / 100.0 else 0.0
-        val total = net + service + tax
+        val net = MoneyMath.round((subtotal - discount).coerceAtLeast(0.0), profile.currencyCode)
+        val breakdown = MoneyMath.calculate(net, profile.serviceChargeRate, profile.taxRate,
+            profile.serviceChargeEnabled, profile.taxEnabled, profile.currencyCode)
+        val service = breakdown.serviceCharge
+        val tax = breakdown.tax
+        val total = breakdown.total
         val left = 76f; val right = 1004f
         val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(35,43,56); textSize = 31f }
         val muted = android.graphics.Paint(text).apply { color = android.graphics.Color.rgb(111,121,137); textSize = 25f }
