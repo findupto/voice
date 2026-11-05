@@ -23,6 +23,7 @@ fun PremiumQuickSale(
     val discountAmount = cartDiscount(cart)
     val subtotal = cartProductSubtotal(cart)
     val total = cart.sumOf { it.total }
+    val pairings = remember(menu, products) { FoodPairingEngine.suggest(menu, products) }
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -53,6 +54,36 @@ fun PremiumQuickSale(
                                 }
                             }
                             if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+                if (pairings.isNotEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.28f))
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(Modifier.width(7.dp))
+                                Text("SMART PAIRINGS", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.weight(1f))
+                                Text("Based on this order", style = MaterialTheme.typography.labelSmall)
+                            }
+                            pairings.forEach { suggestion ->
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(suggestion.item.name, fontWeight = FontWeight.SemiBold)
+                                        Text(suggestion.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text(money(suggestion.item.price), style = MaterialTheme.typography.labelLarge)
+                                    TextButton(onClick = { addProduct(suggestion.item) }) { Text("ADD") }
+                                }
+                            }
                         }
                     }
                 }
