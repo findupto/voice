@@ -2,6 +2,13 @@ package com.findupto.voicepos
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.Color
+import android.graphics.pdf.PdfDocument
+import androidx.core.content.FileProvider
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.foundation.layout.*
@@ -103,6 +110,26 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
                     Text("${statementRows.size} statement entries", style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(
                         onClick = {
+                            runCatching {
+                                val folder = File(context.cacheDir, "shared_receipts").apply { mkdirs() }
+                                val file = File(folder, "supplier-statement-${System.currentTimeMillis()}.pdf")
+                                createSupplierStatementPdf(file, statementRows, statementFrom, statementTo)
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Supplier statement")
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(share, "Share supplier PDF statement"))
+                            }.onFailure {
+                                android.widget.Toast.makeText(context, "PDF export failed: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("EXPORT PDF STATEMENT") }
+                    OutlinedButton(
+                        onClick = {
                             val csv = buildString {
                                 appendLine("date,type,supplier,details,amount,paid_to_date,current_balance,status")
                                 statementRows.forEach { row ->
@@ -194,4 +221,75 @@ private fun String.toStatementBoundary(endOfDay: Boolean): Long? {
         val start = date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         if (endOfDay) date.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() - 1 else start
     }.getOrNull()
+}
+
+private fun createSupplierStatementPdf(file: File, rows: List<List<Any>>, from: String, to: String) {
+    val document = PdfDocument()
+    val pageWidth = 595
+    val pageHeight = 842
+    val margin = 36f
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(35, 43, 61); textSize = 20f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+    val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(70, 79, 96); textSize = 9f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+    val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(45, 52, 65); textSize = 8f }
+    val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(105, 112, 125); textSize = 9f }
+    val rulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(210, 215, 224); strokeWidth = 0.8f }
+    val columns = floatArrayOf(margin, 100f, 190f, 350f, 410f, 470f, 555f)
+    var pageNumber = 0
+    var page: PdfDocument.Page? = null
+    var canvas: Canvas? = null
+    var y = 0f
+    fun startPage() {
+        pageNumber++
+        page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        canvas = page!!.canvas
+        y = 42f
+        if (pageNumber == 1) {
+            canvas!!.drawText("SUPPLIER STATEMENT", margin, y, titlePaint); y += 22f
+            canvas!!.drawText("Period: ${from.ifBlank { "All dates" }} to ${to.ifBlank { "All dates" }}", margin, y, mutedPaint); y += 24f
+        } else {
+            canvas!!.drawText("SUPPLIER STATEMENT (continued)", margin, y, titlePaint); y += 28f
+        }
+        val labels = listOf("DATE", "TYPE", "SUPPLIER", "AMOUNT", "PAID", "BALANCE")
+        labels.forEachIndexed { index, label -> canvas!!.drawText(label, columns[index], y, headerPaint) }
+        y += 8f
+        canvas!!.drawLine(margin, y, pageWidth - margin, y, rulePaint)
+        y += 16f
+    }
+    fun finishPage() { page?.let { document.finishPage(it) }; page = null; canvas = null }
+    try {
+        startPage()
+        var amountTotal = 0.0
+        var paidTotal = 0.0
+        var balanceTotal = 0.0
+        rows.forEach { row ->
+            if (y > pageHeight - 65f) { finishPage(); startPage() }
+            val timestamp = row[0] as Long
+            val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(timestamp))
+            val type = row[1].toString()
+            val supplier = row[2].toString().take(25)
+            val amount = row[4] as Double
+            val paid = row[5] as Double
+            val balance = row[6] as Double
+            val status = row[7].toString()
+            canvas!!.drawText(date, columns[0], y, bodyPaint)
+            canvas!!.drawText(type.take(15), columns[1], y, bodyPaint)
+            canvas!!.drawText(supplier, columns[2], y, bodyPaint)
+            canvas!!.drawText(String.format(java.util.Locale.US, "%.2f", amount), columns[3], y, bodyPaint)
+            canvas!!.drawText(String.format(java.util.Locale.US, "%.2f", paid), columns[4], y, bodyPaint)
+            canvas!!.drawText(String.format(java.util.Locale.US, "%.2f", balance), columns[5], y, bodyPaint)
+            y += 12f
+            canvas!!.drawText("Details: ${row[3].toString().take(90)} • ${status}", columns[1], y, mutedPaint)
+            y += 17f
+            amountTotal += amount; paidTotal += paid; balanceTotal += balance
+        }
+        if (y > pageHeight - 85f) { finishPage(); startPage() }
+        canvas!!.drawLine(margin, y, pageWidth - margin, y, rulePaint); y += 18f
+        canvas!!.drawText("TOTALS", margin, y, headerPaint)
+        canvas!!.drawText(String.format(java.util.Locale.US, "Amount: %.2f   Paid: %.2f   Balance: %.2f", amountTotal, paidTotal, balanceTotal), 115f, y, headerPaint)
+        canvas!!.drawText("Generated by Voice POS", margin, pageHeight - 24f, mutedPaint)
+        finishPage()
+        file.outputStream().use { document.writeTo(it) }
+    } finally {
+        runCatching { document.close() }
+    }
 }
