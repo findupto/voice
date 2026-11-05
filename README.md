@@ -69,6 +69,12 @@ This is an incremental workflow foundation rather than a certified enterprise de
 - Existing backups without inventory data remain importable and leave the device's current inventory intact.
 
 
+## Supplier purchase receipt safety
+
+- Receiving a purchase order records stock with a stable purchase-order movement ID and records the supplier payable with the same unique reference.
+- If the app is interrupted between those saves, retrying the receipt completes the missing step without adding the stock or payable twice.
+- Purchase quantities and calculated order totals are checked for invalid or overflowing values before saving.
+
 ## Backup
 
 The existing JSON business backup remains available from Settings. For a central copy, export it from the owner/server phone after synchronizing staff devices.
