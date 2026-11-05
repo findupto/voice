@@ -16,15 +16,14 @@ object StaffDefaults {
         if (prefs.getBoolean("default_accounts_seeded", false)) return
         val existing = runCatching { JSONObject(prefs.getString("accounts", "{}") ?: "{}") }
             .getOrDefault(JSONObject())
-        if (existing.length() != 0) return
-
-        val accounts = JSONObject()
+        val accounts = existing
         listOf(
             Triple("Owner", "OWNER", "0099"),
             Triple("Admin", "ADMIN", "1122"),
             Triple("Waiter", "WAITER", "1234"),
             Triple("Chef", "CHEF", "1234")
         ).forEach { (name, role, pin) ->
+            if (accounts.has(name.lowercase())) return@forEach
             val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
             val spec = PBEKeySpec(pin.toCharArray(), salt, 120000, 256)
             val hash = try {
