@@ -12,7 +12,7 @@ One Android phone can act as the restaurant's main data server. Staff phones con
 4. On a clean install, the app seeds four local starter accounts: Owner / `0099`, Admin / `1122`, Waiter / `1234`, and Chef / `1234`. Sign in on the phone that will host the server, then open Network and tap Start Main Server.
 5. Admins and Owners can create named staff accounts with individual PINs and roles. Staff connect using the owner IP address and sign in with their assigned account name and PIN; synchronization then uses their staff session.
 6. Change the starter PINs immediately after setup. These shared starter PINs are convenience credentials, not secure production credentials; do not expose the POS server beyond a trusted private LAN.
-6. Open Live Orders on staff phones. The staff board polls the owner server every four seconds. Waiter order submissions and amendments are sent to the owner; chef status updates and waiter served acknowledgements are recorded on the owner device. Counter checkout can send the completed sale and receipt data back to the owner.
+7. Open Live Orders on staff phones. The staff board polls the owner server every four seconds. Waiter order submissions and amendments are sent to the owner; chef status updates and waiter served acknowledgements are recorded on the owner device. Counter checkout can send the completed sale and receipt data back to the owner.
 
 The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/stop a hotspot. The owner phone must remain powered on and the POS app must remain running while it hosts the server. Android may stop background apps under battery pressure.
 
@@ -37,6 +37,13 @@ The app does not toggle Wi-Fi, switch networks, enable mobile data, or start/sto
 - LAN requests reject redirects and oversized request/response bodies. Offline orders are persisted locally, retried in small batches without blocking new order entry, and retained for WorkManager retry until the owner device accepts them; the queue has a 5,000-order safety limit.
 - Android cloud/device-transfer backups exclude staff PIN hashes, active LAN tokens/sessions, and staff messages. Business data continues to use the app's own validated JSON backup and rotating local backup files.
 - **Transport limitation:** the local POS server currently uses HTTP, not TLS. Use only a trusted private Wi-Fi network or phone hotspot; never expose TCP port 8765 to the public internet or forward it from a router. These controls harden the local workflow but do not provide end-to-end encryption.
+
+## Staff permissions and checkout assistance
+
+- Owners can assign individual capabilities to each staff account from Staff Accounts. The server validates permissions for supported LAN actions, including order creation and status changes, kitchen updates, messages, shifts, audit access, and staff administration.
+- Role defaults are applied unless an owner saves a custom permission set. The owner account always retains full access. Permissions that are not enforced by the server are intentionally not exposed as configurable switches.
+- Quick Checkout can show offline, rule-based menu pairings using the restaurant's own menu names and prices. Suggestions never create products or alter prices; staff must tap ADD to include a suggestion.
+- Connection diagnostics test the owner device endpoint and show the local offline-order queue count. This does not replace a full end-to-end network or device health check.
 
 ## Restaurant order workflow
 
