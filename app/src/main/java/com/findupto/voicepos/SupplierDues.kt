@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 data class SupplierDue(val id: Long, val supplier: String, val phone: String, val description: String, val total: Double, val paid: Double, val createdAt: Long, val referenceId: String = "") {
     val balance: Double get() = (total - paid).coerceAtLeast(0.0)
 }
+data class SupplierPayment(val id: Long, val dueId: Long, val supplier: String, val amount: Double, val paidAt: Long, val note: String = "", val balanceAfter: Double = 0.0)
+
 class SupplierDueStore(context: Context) {
     private val prefs = context.getSharedPreferences("voice_supplier_dues_v1", Context.MODE_PRIVATE)
     fun all(): List<SupplierDue> {
@@ -53,6 +55,46 @@ class SupplierDueStore(context: Context) {
     }
     fun update(x: SupplierDue) = save(all().map { if (it.id == x.id) x else it })
     fun remove(id: Long) = save(all().filterNot { it.id == id })
+
+    fun payments(): List<SupplierPayment> {
+        val a = JSONArray(prefs.getString("payments", "[]"))
+        return (0 until a.length()).mapNotNull { i ->
+            runCatching {
+                a.getJSONObject(i).let { o ->
+                    SupplierPayment(o.getLong("id"), o.getLong("dueId"), o.getString("supplier"),
+                        o.getDouble("amount"), o.getLong("paidAt"), o.optString("note"),
+                        o.optDouble("balanceAfter", 0.0))
+                }
+            }.getOrNull()
+        }.sortedByDescending { it.paidAt }
+    }
+
+    /** Saves the dated payment event and updated payable in one committed preference write. */
+    @Synchronized fun recordPayment(dueId: Long, amount: Double, note: String = ""): Boolean {
+        if (!amount.isFinite() || amount <= 0.0) return false
+        val dues = all()
+        val due = dues.firstOrNull { it.id == dueId } ?: return false
+        if (!due.balance.isFinite() || amount > due.balance + 0.000001) return false
+        val now = System.currentTimeMillis()
+        val payment = SupplierPayment(System.nanoTime().coerceAtLeast(1L), due.id, due.supplier,
+            amount, now, note.trim(), (due.balance - amount).coerceAtLeast(0.0))
+        val nextDues = dues.map { if (it.id == dueId) it.copy(paid = (it.paid + amount).coerceAtMost(it.total)) else it }
+        val duesJson = JSONArray().apply {
+            nextDues.forEach { x -> put(JSONObject().put("id",x.id).put("supplier",x.supplier)
+                .put("phone",x.phone).put("description",x.description).put("total",x.total)
+                .put("paid",x.paid).put("createdAt",x.createdAt).put("referenceId",x.referenceId)) }
+        }
+        val paymentJson = JSONArray().apply {
+            payments().forEach { p -> put(JSONObject().put("id",p.id).put("dueId",p.dueId)
+                .put("supplier",p.supplier).put("amount",p.amount).put("paidAt",p.paidAt)
+                .put("note",p.note).put("balanceAfter",p.balanceAfter)) }
+            put(JSONObject().put("id",payment.id).put("dueId",payment.dueId).put("supplier",payment.supplier)
+                .put("amount",payment.amount).put("paidAt",payment.paidAt).put("note",payment.note)
+                .put("balanceAfter",payment.balanceAfter))
+        }
+        return prefs.edit().putString("entries", duesJson.toString())
+            .putString("payments", paymentJson.toString()).commit()
+    }
 }
 @Composable
 fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () -> Unit) {
@@ -77,18 +119,23 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
     var amount by remember { mutableStateOf("") }
     var paying by remember { mutableStateOf<SupplierDue?>(null) }
     var payment by remember { mutableStateOf("") }
+    var paymentNote by remember { mutableStateOf("") }
+    var payments by remember { mutableStateOf(store.payments()) }
     var statementMode by remember { mutableStateOf(false) }
     var statementFrom by remember { mutableStateOf("") }
     var statementTo by remember { mutableStateOf("") }
-    val statementRows = remember(rows, purchaseOrders, statementFrom, statementTo) {
+    val statementRows = remember(rows, purchaseOrders, payments, statementFrom, statementTo) {
         val from = statementFrom.toStatementBoundary(false)
         val to = statementTo.toStatementBoundary(true)
         val duesInRange = rows.filter { (from == null || it.createdAt >= from) && (to == null || it.createdAt <= to) }
         val ordersInRange = purchaseOrders.filter { (from == null || it.createdAt >= from) && (to == null || it.createdAt <= to) }
+        val paymentsInRange = payments.filter { (from == null || it.paidAt >= from) && (to == null || it.paidAt <= to) }
         (duesInRange.map { due ->
             listOf(due.createdAt, "PAYABLE", due.supplier, due.description, due.total, due.paid, due.balance, "Recorded")
         } + ordersInRange.map { order ->
             listOf(order.createdAt, "PURCHASE ORDER", order.supplier, "${order.quantity} ${order.unit} ${order.itemName}", order.total, 0.0, order.total, if (order.received) "Received" else "Pending")
+        } + paymentsInRange.map { p ->
+            listOf(p.paidAt, "PAYMENT", p.supplier, p.note.ifBlank { "Payment for payable #${p.dueId}" }, p.amount, p.amount, p.balanceAfter, "Payment recorded")
         }).sortedBy { it[0] as Long }
     }
     AlertDialog(
@@ -102,7 +149,7 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
                     TextButton(onClick = { statementMode = !statementMode }) { Text(if (statementMode) "HIDE STATEMENT" else "STATEMENT / EXPORT") }
                 }
                 if (statementMode) {
-                    Text("Filter by creation date (YYYY-MM-DD). Leave blank for all dates.", style = MaterialTheme.typography.bodySmall)
+                    Text("Filter payable/order dates and actual payment dates (YYYY-MM-DD). Leave blank for all dates.", style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedTextField(statementFrom, { statementFrom = it.take(10) }, label = { Text("From date") }, modifier = Modifier.weight(1f), singleLine = true, isError = statementFrom.isNotBlank() && statementFrom.toStatementBoundary(false) == null)
                         OutlinedTextField(statementTo, { statementTo = it.take(10) }, label = { Text("To date") }, modifier = Modifier.weight(1f), singleLine = true, isError = statementTo.isNotBlank() && statementTo.toStatementBoundary(true) == null)
@@ -186,7 +233,7 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
                                 if(row.description.isNotBlank()) Text(row.description,style=MaterialTheme.typography.bodySmall)
                                 Text("Owed: ${CurrencySettings.symbol} ${row.balance.formatMoney()}  •  Original: ${row.total.formatMoney()}")
                                 Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                                    OutlinedButton(onClick={paying=row;payment=""},enabled=row.balance>0.005){Text("RECORD PAYMENT")}
+                                    OutlinedButton(onClick={paying=row;payment="";paymentNote=""},enabled=row.balance>0.005){Text("RECORD PAYMENT")}
                                     TextButton(onClick={store.remove(row.id);rows=store.all();changed()}){Text("REMOVE")}
                                 }
                             }
@@ -199,8 +246,20 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
     )
     paying?.let { due ->
         AlertDialog(onDismissRequest={paying=null},title={Text("Pay ${due.supplier}")},
-            text={OutlinedTextField(payment,{payment=it.filter{c->c.isDigit()||c=='.'}},label={Text("Payment (balance ${due.balance.formatMoney()})")},singleLine=true)},
-            confirmButton={TextButton(onClick={val n=payment.toDoubleOrNull();if(n!=null&&n>0){store.update(due.copy(paid=due.paid+n.coerceAtMost(due.balance)));rows=store.all();changed();paying=null}}){Text("SAVE PAYMENT")}},
+            text={
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(payment,{payment=it.filter{c->c.isDigit()||c=='.'}},label={Text("Payment (balance ${due.balance.formatMoney()})")},singleLine=true)
+                    OutlinedTextField(paymentNote,{paymentNote=it},label={Text("Payment note (optional)")},singleLine=true)
+                }
+            },
+            confirmButton={TextButton(onClick={
+                val n=payment.toDoubleOrNull()
+                if(n!=null && store.recordPayment(due.id,n,paymentNote)){
+                    rows=store.all();payments=store.payments();changed();paying=null;paymentNote=""
+                } else {
+                    android.widget.Toast.makeText(context, "Enter a valid payment no greater than the outstanding balance.", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }){Text("SAVE PAYMENT")}},
             dismissButton={TextButton(onClick={paying=null}){Text("CANCEL")}})
     }
 }
@@ -261,6 +320,7 @@ private fun createSupplierStatementPdf(file: File, rows: List<List<Any>>, from: 
         var amountTotal = 0.0
         var paidTotal = 0.0
         var balanceTotal = 0.0
+        var paymentTotal = 0.0
         rows.forEach { row ->
             if (y > pageHeight - 65f) { finishPage(); startPage() }
             val timestamp = row[0] as Long
@@ -280,12 +340,13 @@ private fun createSupplierStatementPdf(file: File, rows: List<List<Any>>, from: 
             y += 12f
             canvas!!.drawText("Details: ${row[3].toString().take(90)} • ${status}", columns[1], y, mutedPaint)
             y += 17f
-            amountTotal += amount; paidTotal += paid; balanceTotal += balance
+            if (type == "PAYMENT") paymentTotal += amount
+            else { amountTotal += amount; paidTotal += paid; balanceTotal += balance }
         }
         if (y > pageHeight - 85f) { finishPage(); startPage() }
         canvas!!.drawLine(margin, y, pageWidth - margin, y, rulePaint); y += 18f
         canvas!!.drawText("TOTALS", margin, y, headerPaint)
-        canvas!!.drawText(String.format(java.util.Locale.US, "Amount: %.2f   Paid: %.2f   Balance: %.2f", amountTotal, paidTotal, balanceTotal), 115f, y, headerPaint)
+        canvas!!.drawText(String.format(java.util.Locale.US, "Amount: %.2f   Paid to date: %.2f   Payment events: %.2f   Balance: %.2f", amountTotal, paidTotal, paymentTotal, balanceTotal), 115f, y, headerPaint)
         canvas!!.drawText("Generated by Voice POS", margin, pageHeight - 24f, mutedPaint)
         finishPage()
         file.outputStream().use { document.writeTo(it) }
