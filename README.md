@@ -69,6 +69,10 @@ This is an incremental workflow foundation rather than a certified enterprise de
 - Existing backups without inventory data remain importable and leave the device's current inventory intact.
 
 
+## Supplier-wise purchase and payable summaries
+
+The Supplier / Vendor Payables screen groups suppliers and shows recorded purchase totals, payments recorded against supplier dues, outstanding balances, and received versus pending purchase-order counts. Individual payable entries remain available below each summary for payment recording and review.
+
 ## Inventory reorder suggestions
 
 The Inventory screen highlights items at or below their configured minimum and calculates a suggested top-up to twice that minimum. Each suggestion displays the estimated cost using the saved unit cost. These are review-only recommendations; they do not create purchase orders or send supplier requests automatically.
