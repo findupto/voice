@@ -21,7 +21,7 @@ class BusinessAutomationStore(context: Context) {
     var dailySummary: Boolean
         get() = prefs.getBoolean("daily_summary", true)
         set(value) { prefs.edit().putBoolean("daily_summary", value).apply() }
-    var automationEnabled: Boolean
+    var purchaseDrafts: Boolean\n        get() = prefs.getBoolean("purchase_drafts", true)\n        set(value) { prefs.edit().putBoolean("purchase_drafts", value).apply() }\n    var overdueDuesAlerts: Boolean\n        get() = prefs.getBoolean("overdue_dues", true)\n        set(value) { prefs.edit().putBoolean("overdue_dues", value).apply() }\n    var shiftReminders: Boolean\n        get() = prefs.getBoolean("shift_reminders", true)\n        set(value) { prefs.edit().putBoolean("shift_reminders", value).apply() }\n    var profitInsights: Boolean\n        get() = prefs.getBoolean("profit_insights", true)\n        set(value) { prefs.edit().putBoolean("profit_insights", value).apply() }\n    var automationEnabled: Boolean
         get() = prefs.getBoolean("enabled", true)
         set(value) { prefs.edit().putBoolean("enabled", value).apply() }
     fun lastRun(): Long = prefs.getLong("last_run", 0L)
@@ -62,6 +62,43 @@ class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Wor
             }
             prefs.edit().putString("overdue_signature", signature).apply()
         }
+        val inventory = InventoryStore(applicationContext)
+        if (settings.purchaseDrafts) {
+            val drafts = inventory.lowStock().mapNotNull { item ->
+                val quantity = suggestedReorderQuantity(item.quantity, item.minimum)
+                if (quantity <= 0.0 || !quantity.isFinite()) null else JSONObject()
+                    .put("stockId", item.id).put("name", item.name).put("quantity", quantity)
+                    .put("unit", item.unit).put("unitCost", item.unitCost)
+                    .put("estimatedTotal", quantity * item.unitCost)
+            }
+            val draftArray = JSONArray().apply { drafts.forEach { put(it) } }
+            val signature = drafts.joinToString("|") { "${it.optLong("stockId")}:${it.optDouble("quantity")}" }
+            prefs.edit().putString("purchase_order_drafts", draftArray.toString()).apply()
+            if (drafts.isNotEmpty() && prefs.getString("purchase_draft_signature", "") != signature) {
+                notify(8204, "Purchase order draft ready", drafts.take(6).joinToString { "${it.optString("name")}: ${it.optDouble("quantity")} ${it.optString("unit")}" } +
+                    " • Review and approve in Supplier Purchasing")
+            }
+            prefs.edit().putString("purchase_draft_signature", signature).apply()
+        }
+        if (settings.overdueDuesAlerts) {
+            val sevenDays = now - 7L * 24 * 60 * 60 * 1000
+            val overdueCustomers = store.dues().filter { it.createdAt <= sevenDays }
+            val overdueSuppliers = SupplierDueStore(applicationContext).all().filter { it.balance > 0.005 && it.createdAt <= sevenDays }
+            val signature = overdueCustomers.map { "c${it.id}" } .plus(overdueSuppliers.map { "s${it.id}" }).sorted().joinToString(",")
+            if (signature.isNotBlank() && prefs.getString("overdue_dues_signature", "") != signature) {
+                notify(8205, "Overdue payments need follow-up",
+                    "${overdueCustomers.size} customer account(s) and ${overdueSuppliers.size} supplier bill(s) are 7+ days old.")
+            }
+            prefs.edit().putString("overdue_dues_signature", signature).apply()
+        }
+        if (settings.shiftReminders) {
+            val longShifts = store.activeShifts().filter { now - it.openedAt >= 12L * 60 * 60 * 1000 }
+            val signature = longShifts.map { it.id }.sorted().joinToString(",")
+            if (signature.isNotBlank() && prefs.getString("long_shift_signature", "") != signature) {
+                notify(8206, "Staff shift review", longShifts.joinToString { "${it.person} • shift open 12+ hours" })
+            }
+            prefs.edit().putString("long_shift_signature", signature).apply()
+        }
         val cal = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
         val dayKey = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(cal.time)
         if (settings.dailySummary && prefs.getString("daily_summary_day", "") != dayKey) {
@@ -71,6 +108,20 @@ class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Wor
             val outstanding = today.sumOf { it.dueAmount }
             notify(8203, "Daily business snapshot", "${today.size} sales • Revenue ${String.format(java.util.Locale.getDefault(), "%.2f", revenue)} • Expenses ${String.format(java.util.Locale.getDefault(), "%.2f", expenses)} • Customer dues ${String.format(java.util.Locale.getDefault(), "%.2f", outstanding)}")
             prefs.edit().putString("daily_summary_day", dayKey).apply()
+        }
+        if (settings.profitInsights) {
+            val todaySales = store.sales().filter { it.time >= cal.timeInMillis }
+            val revenue = todaySales.sumOf { it.total }
+            val foodCost = todaySales.sumOf { inventory.estimatedRecipeCost(it.items) }
+            val expenseTotal = store.expenses().filter { it.time >= cal.timeInMillis }.sumOf { it.amount }
+            val grossProfit = revenue - foodCost
+            val estimatedNet = grossProfit - expenseTotal
+            val profitDay = "profit_${dayKey}"
+            if (prefs.getString("profit_insight_day", "") != profitDay) {
+                notify(8207, "Daily estimated profit insight",
+                    "Revenue ${"%.2f".format(revenue)} • Recipe cost ${"%.2f".format(foodCost)} • Expenses ${"%.2f".format(expenseTotal)} • Est. net ${"%.2f".format(estimatedNet)}")
+                prefs.edit().putString("profit_insight_day", profitDay).apply()
+            }
         }
         prefs.edit().putLong("last_run", now).apply()
         Result.success()
