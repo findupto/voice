@@ -26,7 +26,8 @@ data class InventoryStockItem(
     val minimum: Double,
     val unitCost: Double,
     val baseQuantity: Double = 0.0,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val barcode: String = ""
 )
 
 data class RecipeComponent(val stockName: String, val quantity: Double, val unit: String)
@@ -58,14 +59,14 @@ class InventoryStore(context: Context) {
             InventoryStockItem(o.getLong("id"), o.getString("name"), o.optString("category", "Ingredient"),
                 o.optDouble("quantity", 0.0), o.optString("unit", "pcs"),
                 o.optDouble("minimum", 0.0), o.optDouble("unitCost", 0.0),
-                o.optDouble("baseQuantity", Double.NaN), o.optLong("updatedAt", 0L))
+                o.optDouble("baseQuantity", Double.NaN), o.optLong("updatedAt", 0L), o.optString("barcode", ""))
         }.getOrNull() }.sortedBy { it.name.lowercase() }
     }
     private fun saveItems(xs: List<InventoryStockItem>) {
         val a = JSONArray()
         xs.forEach { x -> a.put(JSONObject().put("id", x.id).put("name", x.name).put("category", x.category)
             .put("quantity", x.quantity).put("unit", x.unit).put("minimum", x.minimum).put("unitCost", x.unitCost)
-            .put("baseQuantity", x.baseQuantity).put("updatedAt", x.updatedAt)) }
+            .put("baseQuantity", x.baseQuantity).put("updatedAt", x.updatedAt).put("barcode", x.barcode)) }
         prefs.edit().putString("items", a.toString()).apply()
     }
     fun addItem(name: String, category: String, quantity: Double, unit: String, minimum: Double, unitCost: Double): Boolean {
@@ -112,6 +113,16 @@ class InventoryStore(context: Context) {
             stamp + " • " + o.getString("name") + " • " + o.getDouble("quantity") + " • " + o.getString("reason")
         }.getOrNull() }.takeLast(limit).reversed()
     }
+    @Synchronized fun updateBarcode(id: Long, barcode: String): Boolean {
+        val clean = barcode.trim()
+        if (clean.isBlank()) return false
+        val all = items()
+        if (all.any { it.id != id && it.barcode.equals(clean, true) }) return false
+        if (all.none { it.id == id }) return false
+        val now = System.currentTimeMillis()
+        return prefs.edit().putString("items", itemsArray(all.map { if (it.id == id) it.copy(barcode = clean, updatedAt = now) else it }).toString()).commit()
+    }
+    fun findByBarcode(barcode: String): InventoryStockItem? = items().firstOrNull { it.barcode.equals(barcode.trim(), true) && barcode.isNotBlank() }
     fun lowStock(): List<InventoryStockItem> = items().filter { it.quantity <= it.minimum }
     fun recipes(): List<ProductRecipe> {
         val root = JSONObject(prefs.getString("recipes", "{}"))
@@ -314,6 +325,11 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
     var unit by remember { mutableStateOf("pcs") }
     var minimum by remember { mutableStateOf("0") }
     var cost by remember { mutableStateOf("0") }
+    var barcode by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val barcodeScanner = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) result.data?.getStringExtra(LiveQrScannerActivity.EXTRA_BARCODE)?.let { barcode = it }
+    }
     var adjustBy by remember { mutableStateOf("1") }
     var product by remember { mutableStateOf("") }
     var dealPrice by remember { mutableStateOf("") }
@@ -343,6 +359,10 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                         FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c) })
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(barcode, { barcode = it }, label = { Text("Barcode / SKU") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedButton(onClick = { barcodeScanner.launch(android.content.Intent(context, LiveQrScannerActivity::class.java).putExtra(LiveQrScannerActivity.EXTRA_SCAN_ANY_BARCODE, true)) }) { Text("SCAN") }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(qty, { qty = it }, label = { Text("Opening qty") }, modifier = Modifier.weight(1f), singleLine = true)
                     OutlinedTextField(unit, { unit = it }, label = { Text("Unit (kg, g, pcs)") }, modifier = Modifier.weight(1f), singleLine = true)
@@ -352,9 +372,13 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                     OutlinedTextField(cost, { cost = it }, label = { Text("Cost per unit") }, modifier = Modifier.weight(1f), singleLine = true)
                 }
                 Button(onClick = {
-                    val ok = inventory.addItem(name, category, qty.toDoubleOrNull() ?: -1.0, unit, minimum.toDoubleOrNull() ?: -1.0, cost.toDoubleOrNull() ?: -1.0)
-                    message = if (ok) "Stock item saved" else "Check fields or use a unique item name"
-                    if (ok) { name = ""; qty = "0"; minimum = "0"; cost = "0"; tick++; refresh() }
+                    var ok = inventory.addItem(name, category, qty.toDoubleOrNull() ?: -1.0, unit, minimum.toDoubleOrNull() ?: -1.0, cost.toDoubleOrNull() ?: -1.0)
+                    if (ok && barcode.isNotBlank()) {
+                        val saved = inventory.items().firstOrNull { canonicalProductKey(it.name) == canonicalProductKey(name) }
+                        ok = saved != null && inventory.updateBarcode(saved.id, barcode)
+                    }
+                    message = if (ok) "Stock item saved" else "Check fields, barcode uniqueness, or use a unique item name"
+                    if (ok) { name = ""; barcode = ""; qty = "0"; minimum = "0"; cost = "0"; tick++; refresh() }
                 }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("ADD STOCK ITEM") }
                 val stockValue = stock.sumOf { it.quantity.coerceAtLeast(0.0) * it.unitCost }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -371,7 +395,7 @@ fun InventoryManager(inventory: InventoryStore, menuStore: Store, close: () -> U
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(item.name, fontWeight = FontWeight.SemiBold)
-                                        Text("${item.category} • ${item.quantity} ${item.unit} • min ${item.minimum}", style = MaterialTheme.typography.bodySmall)
+                                        Text("${item.category} • ${item.quantity} ${item.unit} • min ${item.minimum}" + if (item.barcode.isNotBlank()) " • ${item.barcode}" else "", style = MaterialTheme.typography.bodySmall)
                                     }
                                     if (item.quantity <= item.minimum) Text("LOW", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                                 }
