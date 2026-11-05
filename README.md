@@ -90,3 +90,7 @@ The existing JSON business backup remains available from Settings. For a central
 ## Build
 
 Android APK builds run automatically on pushes to main. Successful builds publish a downloadable APK artifact and GitHub Release.
+
+## Supplier statements and CSV export
+
+The Supplier / Vendor Payables screen includes a date-filtered statement covering supplier payable entries and purchase orders. Enter optional inclusive From and To dates in YYYY-MM-DD format, review the matching entries, and export the statement as CSV through the Android share sheet. Each payable row shows its original amount, cumulative payments recorded to date, and current outstanding balance; purchase-order rows show their received or pending status. Payment history is stored as a cumulative paid amount rather than individual dated payment events, so the date filter applies to the payable or purchase-order creation date and does not reconstruct payment dates.
