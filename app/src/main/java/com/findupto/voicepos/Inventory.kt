@@ -77,6 +77,19 @@ class InventoryStore(context: Context) {
         val next = items() + InventoryStockItem(id, name.trim(), category, quantity, unit.trim(), minimum, unitCost, 0.0, now)
         return persistStockChange(next, name.trim(), quantity, "Opening stock", id, "opening:$id", now)
     }
+    /** Idempotent receipt: retries with the same purchase order ID never add stock twice. */
+    @Synchronized fun receivePurchaseOrder(purchaseOrderId: Long, stockItemId: Long, quantity: Double, reason: String): Boolean {
+        if (purchaseOrderId <= 0L || !quantity.isFinite() || quantity <= 0.0) return false
+        val movementId = "purchase:$purchaseOrderId:$stockItemId"
+        val movements = JSONArray(prefs.getString("movements", "[]"))
+        if ((0 until movements.length()).any { movements.optJSONObject(it)?.optString("id") == movementId }) return true
+        val current = items()
+        val item = current.firstOrNull { it.id == stockItemId } ?: return false
+        val now = System.currentTimeMillis()
+        val next = current.map { if (it.id == stockItemId) it.copy(quantity = it.quantity + quantity, updatedAt = now) else it }
+        return persistStockChange(next, item.name, quantity, reason, stockItemId, movementId, now)
+    }
+
     @Synchronized fun adjustStock(id: Long, delta: Double, reason: String): Boolean {
         if (!delta.isFinite()) return false
         val old = items().firstOrNull { it.id == id } ?: return false
