@@ -180,12 +180,8 @@ fun StaffAccountsDialog(onClose: () -> Unit) {
                         singleLine = true
                     )
                     Text("Staff role", style = MaterialTheme.typography.labelMedium)
-                    val roles = if (account.role in setOf("OWNER", "ADMIN")) {
-                        listOf("OWNER", "ADMIN", "COUNTER", "WAITER", "CHEF", "DISHWASHER", "RIDER")
-                    } else {
-                        listOf("COUNTER", "WAITER", "CHEF", "DISHWASHER", "RIDER") +
-                            if (account.role == "ADMIN") listOf("ADMIN") else emptyList()
-                    }
+                    val roles = listOf("ADMIN", "COUNTER", "WAITER", "CHEF", "DISHWASHER", "RIDER") +
+                        if (account.role == "OWNER") listOf("OWNER") else emptyList()
                     roles.forEach { role ->
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             RadioButton(selected = editRole == role, onClick = { editRole = role })
