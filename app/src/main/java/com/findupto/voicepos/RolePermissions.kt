@@ -14,7 +14,7 @@ object RolePermissions {
 
     private val defaults = mapOf(
         "OWNER" to all,
-        "ADMIN" to all - setOf("manage_staff"),
+        "ADMIN" to all - setOf("view_financials"),
         "COUNTER" to setOf("view_orders", "update_order_status", "view_messages", "send_messages", "view_shifts"),
         "WAITER" to setOf("view_orders", "create_order", "update_order_status", "view_messages", "send_messages"),
         "CHEF" to setOf("view_orders", "update_kitchen", "view_messages", "send_messages"),
