@@ -28,4 +28,17 @@ class InventoryUnitConversionTest {
     @Test fun rejectsIncompatibleUnits() {
         assertNull(quantityInStockUnit(2.0, "kg", "pcs"))
     }
+    @Test fun suggestsTopUpToTwiceMinimum() {
+        assertEquals(7.0, suggestedReorderQuantity(3.0, 5.0), 0.000001)
+    }
+
+    @Test fun noSuggestionWhenStockIsAboveMinimum() {
+        assertEquals(0.0, suggestedReorderQuantity(12.0, 5.0), 0.000001)
+    }
+
+    @Test fun rejectsInvalidReorderInputs() {
+        assertEquals(0.0, suggestedReorderQuantity(Double.NaN, 5.0), 0.000001)
+        assertEquals(0.0, suggestedReorderQuantity(1.0, 0.0), 0.000001)
+    }
+
 }
