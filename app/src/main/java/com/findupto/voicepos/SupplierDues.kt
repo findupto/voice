@@ -1,6 +1,7 @@
 package com.findupto.voicepos
 
 import android.content.Context
+import android.content.Intent
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.foundation.layout.*
@@ -69,13 +70,66 @@ fun SupplierDuesManager(store: SupplierDueStore, close: () -> Unit, changed: () 
     var amount by remember { mutableStateOf("") }
     var paying by remember { mutableStateOf<SupplierDue?>(null) }
     var payment by remember { mutableStateOf("") }
+    var statementMode by remember { mutableStateOf(false) }
+    var statementFrom by remember { mutableStateOf("") }
+    var statementTo by remember { mutableStateOf("") }
+    val statementRows = remember(rows, purchaseOrders, statementFrom, statementTo) {
+        val from = statementFrom.toStatementBoundary(false)
+        val to = statementTo.toStatementBoundary(true)
+        val duesInRange = rows.filter { (from == null || it.createdAt >= from) && (to == null || it.createdAt <= to) }
+        val ordersInRange = purchaseOrders.filter { (from == null || it.createdAt >= from) && (to == null || it.createdAt <= to) }
+        (duesInRange.map { due ->
+            listOf(due.createdAt, "PAYABLE", due.supplier, due.description, due.total, due.paid, due.balance, "Recorded")
+        } + ordersInRange.map { order ->
+            listOf(order.createdAt, "PURCHASE ORDER", order.supplier, "${order.quantity} ${order.unit} ${order.itemName}", order.total, 0.0, order.total, if (order.received) "Received" else "Pending")
+        }).sortedBy { it[0] as Long }
+    }
     AlertDialog(
         onDismissRequest = close,
         title = { Text("Supplier / Vendor Payables") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Outstanding payable: ${CurrencySettings.symbol} " + rows.sumOf { it.balance }.formatMoney(), style = MaterialTheme.typography.titleSmall)
-                Text("SUPPLIER SUMMARY", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("SUPPLIER SUMMARY", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { statementMode = !statementMode }) { Text(if (statementMode) "HIDE STATEMENT" else "STATEMENT / EXPORT") }
+                }
+                if (statementMode) {
+                    Text("Filter by creation date (YYYY-MM-DD). Leave blank for all dates.", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(statementFrom, { statementFrom = it.take(10) }, label = { Text("From date") }, modifier = Modifier.weight(1f), singleLine = true, isError = statementFrom.isNotBlank() && statementFrom.toStatementBoundary(false) == null)
+                        OutlinedTextField(statementTo, { statementTo = it.take(10) }, label = { Text("To date") }, modifier = Modifier.weight(1f), singleLine = true, isError = statementTo.isNotBlank() && statementTo.toStatementBoundary(true) == null)
+                    }
+                    Text("${statementRows.size} statement entries", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(
+                        onClick = {
+                            val csv = buildString {
+                                appendLine("date,type,supplier,details,amount,paid_to_date,current_balance,status")
+                                statementRows.forEach { row ->
+                                    val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(row[0] as Long))
+                                    val cells = listOf(date, row[1], row[2], row[3], row[4], row[5], row[6], row[7])
+                                    appendLine(cells.joinToString(",") { value ->
+                                        val raw = when (value) { is Double -> String.format(java.util.Locale.US, "%.2f", value); else -> value.toString() }
+                                        "\"${raw.replace("\"", "\"\"")}\""
+                                    })
+                                }
+                            }
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(Intent.EXTRA_SUBJECT, "Supplier statement")
+                                putExtra(Intent.EXTRA_TEXT, csv)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Export supplier statement"))
+                        },
+                        enabled = (statementFrom.isBlank() || statementFrom.toStatementBoundary(false) != null) && (statementTo.isBlank() || statementTo.toStatementBoundary(true) != null) && (statementFrom.isBlank() || statementTo.isBlank() || statementFrom <= statementTo),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("EXPORT CSV STATEMENT") }
+                    LazyColumn(Modifier.heightIn(max = 180.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(statementRows) { row ->
+                            Text("${java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(row[0] as Long))} • ${row[1]} • ${row[2]} • ${row[7]} • ${CurrencySettings.symbol} ${String.format(java.util.Locale.US, "%.2f", row[4] as Double)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
                 if (supplierSummaries.isEmpty()) Text("No supplier purchases or payables yet.", style = MaterialTheme.typography.bodySmall)
                 LazyColumn(Modifier.heightIn(max = 170.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     items(supplierSummaries, key = { it.name.lowercase(java.util.Locale.ROOT) }) { summary ->
@@ -132,3 +186,12 @@ private data class SupplierSummary(
     val outstanding: Double
 )
 private fun Double.formatMoney(): String = String.format(java.util.Locale.US,"%,.2f",this)
+
+private fun String.toStatementBoundary(endOfDay: Boolean): Long? {
+    if (isBlank()) return null
+    return runCatching {
+        val date = java.time.LocalDate.parse(trim())
+        val start = date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (endOfDay) date.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() - 1 else start
+    }.getOrNull()
+}
