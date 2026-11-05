@@ -85,6 +85,7 @@ class InventoryStore(context: Context) {
         if ((0 until movements.length()).any { movements.optJSONObject(it)?.optString("id") == movementId }) return true
         val current = items()
         val item = current.firstOrNull { it.id == stockItemId } ?: return false
+        if (!(item.quantity + quantity).isFinite()) return false
         val now = System.currentTimeMillis()
         val next = current.map { if (it.id == stockItemId) it.copy(quantity = it.quantity + quantity, updatedAt = now) else it }
         return persistStockChange(next, item.name, quantity, reason, stockItemId, movementId, now)
