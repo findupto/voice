@@ -69,7 +69,7 @@ class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Wor
             val revenue = today.sumOf { it.total }
             val expenses = store.expenses().filter { it.time >= cal.timeInMillis }.sumOf { it.amount }
             val outstanding = today.sumOf { it.dueAmount }
-            notify(8203, "Daily business snapshot", "${today.size} sales • Revenue ${money(revenue)} • Expenses ${money(expenses)} • Customer dues ${money(outstanding)}")
+            notify(8203, "Daily business snapshot", "${today.size} sales • Revenue ${String.format(java.util.Locale.getDefault(), "%.2f", revenue)} • Expenses ${String.format(java.util.Locale.getDefault(), "%.2f", expenses)} • Customer dues ${String.format(java.util.Locale.getDefault(), "%.2f", outstanding)}")
             prefs.edit().putString("daily_summary_day", dayKey).apply()
         }
         prefs.edit().putLong("last_run", now).apply()
