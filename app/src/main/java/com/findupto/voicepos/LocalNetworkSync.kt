@@ -245,7 +245,7 @@ object LocalNetworkSync {
       json(Response.Status.OK,JSONObject().put("session",key).put("name",account.getString("name")).put("role",role))
      }
      session.uri=="/staff/enroll"&&session.method==Method.POST -> {
-      require(firstSetup||staffSession(session)?.role=="OWNER"){"Only the owner can manage staff accounts"}
+      require(firstSetup||staffSession(session)?.role in setOf("OWNER","ADMIN")){"Only an owner or admin can create staff accounts"}
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       val actor=staffSession(session)?.name?:"Owner bootstrap"
@@ -254,13 +254,13 @@ object LocalNetworkSync {
        val a=accounts()
        val firstAccount=a.length()==0
        if(firstAccount)require(role=="OWNER"){"First account must be OWNER"}
-       else require(staffSession(session)?.role=="OWNER"){"Only the owner can manage staff accounts"}
+       else require(staffSession(session)?.role in setOf("OWNER","ADMIN")){"Only an owner or admin can create staff accounts"}
        val key=name.lowercase();require(!a.has(key)){"Staff account already exists"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        a.put(key,JSONObject().put("name",name).put("role",role).put("salt",hex(salt)).put("hash",hashPin(pin,salt)).put("active",true))
        authPrefs.edit().putString("accounts",a.toString()).commit()
       }
-      store.appendOrderAudit(0L,actor,"OWNER","STAFF_ENROLLED","$name ($role)")
+      store.appendOrderAudit(0L,actor,if(firstSetup)"OWNER" else staffSession(session)?.role?:"OWNER","STAFF_ENROLLED","$name ($role)")
       json(Response.Status.OK,JSONObject().put("ok",true).put("name",name).put("role",role))
      }
      session.uri=="/staff/accounts"&&session.method==Method.GET -> {
