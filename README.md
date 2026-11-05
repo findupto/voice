@@ -96,3 +96,14 @@ Android APK builds run automatically on pushes to main. Successful builds publis
 The Supplier / Vendor Payables screen includes a date-filtered statement covering supplier payable entries and purchase orders. Enter optional inclusive From and To dates in YYYY-MM-DD format, review the matching entries, and export the statement as CSV through the Android share sheet. Each payable row shows its original amount, cumulative payments recorded to date, and current outstanding balance; purchase-order rows show their received or pending status. New supplier payments are stored as individual dated events, with an optional note and the remaining balance after each payment. Payment events appear separately in the statement and are filtered by their actual payment date. Existing payments recorded before this ledger was introduced remain part of the cumulative paid amount and cannot be reconstructed as dated events.
 
 Supplier statements can also be shared as a paginated PDF through Android's share sheet. The PDF includes the selected date range, supplier entries, dated payment events, order status, and amount/paid/payment-event/balance totals; CSV export remains available for spreadsheet use.
+
+
+## Business automation center
+
+Owners and Admins can open **Business Automation** from the top toolbar to enable or pause scheduled checks and choose which alerts they want. The local WorkManager automation runs approximately hourly and can:
+- Alert when tracked ingredients or stock items reach their minimum level.
+- Alert when open restaurant orders have waited at least 15 minutes.
+- Deliver a daily business snapshot with sales count, revenue, recorded expenses, and customer dues.
+- Run an immediate check when the owner saves automation settings.
+
+The existing automatic rotating backup and background device synchronization continue independently. Automation is local-first and works from the primary device; Android battery restrictions and notification permission can affect delivery. It does not silently spend money, change prices, pay suppliers, or place purchase orders. Reordering, refunds, payments, and other financial commitments remain owner-approved.
