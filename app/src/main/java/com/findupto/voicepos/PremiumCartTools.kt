@@ -27,8 +27,8 @@ internal fun normalizeNumericInput(value: String, decimal: Boolean): String {
 }
 
 const val CART_DISCOUNT_PREFIX = "__CART_DISCOUNT__"
-fun cartDiscount(cart: List<SaleItem>): Double = (-cart.filter { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }).coerceAtLeast(0.0)
-fun cartProductSubtotal(cart: List<SaleItem>): Double = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }
+fun cartDiscount(cart: List<SaleItem>): Double = MoneyMath.round((-cart.filter { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }).coerceAtLeast(0.0), CurrencySettings.code)
+fun cartProductSubtotal(cart: List<SaleItem>): Double = MoneyMath.round(cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }.sumOf { it.total }, CurrencySettings.code)
 
 @Composable
 fun MultiAddCartDialog(
@@ -163,7 +163,7 @@ fun DiscountDialog(base: Double, current: Double, apply: (Double) -> Unit, close
     var mode by remember { mutableStateOf("PERCENT") }
     var value by remember { mutableStateOf(if (current > 0) current.toString() else "") }
     val entered = value.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-    val amount = if (mode == "PERCENT") (base * entered / 100.0).coerceAtMost(base) else entered.coerceAtMost(base)
+    val amount = if (mode == "PERCENT") MoneyMath.percentage(base, entered, CurrencySettings.code).coerceAtMost(base) else MoneyMath.round(entered, CurrencySettings.code).coerceAtMost(base)
     AlertDialog(onDismissRequest = close, title = { Text("Cart Discount") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Subtotal: ${money(base)}")
