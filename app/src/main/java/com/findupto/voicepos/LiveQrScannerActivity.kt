@@ -74,10 +74,13 @@ class LiveQrScannerActivity : ComponentActivity() {
                     val image = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
                     scanner.process(image)
                         .addOnSuccessListener { codes ->
-                            val code = codes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE && it.rawValue?.let { value -> value.startsWith("VOICEPOS-DISCOUNT|") || value.startsWith("VOICEPOS-PAIR|") } == true }?.rawValue
+                            val scanAny = intent.getBooleanExtra(EXTRA_SCAN_ANY_BARCODE, false)
+                            val code = if (scanAny) codes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue
+                                else codes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE && it.rawValue?.let { value -> value.startsWith("VOICEPOS-DISCOUNT|") || value.startsWith("VOICEPOS-PAIR|") } == true }?.rawValue
                             if (code != null && handled.compareAndSet(false, true)) {
                                 runOnUiThread {
-                                    setResult(RESULT_OK, intent.putExtra(EXTRA_QR_CODE, code))
+                                    val resultKey = if (scanAny) EXTRA_BARCODE else EXTRA_QR_CODE
+                                    setResult(RESULT_OK, intent.putExtra(resultKey, code))
                                     finish()
                                 }
                             }
@@ -105,5 +108,7 @@ class LiveQrScannerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_QR_CODE = "live_scanned_discount_qr"
+        const val EXTRA_BARCODE = "live_scanned_inventory_barcode"
+        const val EXTRA_SCAN_ANY_BARCODE = "scan_any_barcode"
     }
 }
