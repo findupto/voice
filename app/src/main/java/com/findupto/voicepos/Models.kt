@@ -12,17 +12,23 @@ fun canonicalProductKey(name: String): String {
     return (words.filter { it in portions }.distinct().sorted() +
         words.filterNot { it in portions }).joinToString(" ")
 }
-data class SaleItem(val name: String, val qty: Int, val price: Double, val kitchen: String = "FAST_FOOD") { val total: Double get() = qty * price }
+data class SaleItem(val name: String, val qty: Int, val price: Double, val kitchen: String = "FAST_FOOD") {
+    val total: Double get() = MoneyMath.multiply(price, qty, CurrencySettings.code)
+}
 data class Sale(
     val id: Long, val items: List<SaleItem>, val total: Double, val time: Long,
     val customerName: String = "", val customerPhone: String = "", val orderType: String = "DINE_IN", val customerAddress: String = "",
     val paymentMethod: String = "CASH", val paidAmount: Double = total, val dueAmount: Double = 0.0, val shiftId: Long = 0L,
     val serviceCharge: Double = 0.0, val tax: Double = 0.0
 )
-data class PendingSale(val id: Long, val items: List<SaleItem>, val time: Long, val customerName: String = "", val customerPhone: String = "", val orderType: String = "DINE_IN", val customerAddress: String = "", val shiftPerson: String = "", val tableName: String = "", val waiterName: String = "", val counterName: String = "", val chefName: String = "", val status: String = "NEW", val specialInstructions: String = "", val updatedAt: Long = time, val servedAt: Long = 0L, val kitchenProgress: String = "{}") { val total: Double get() = items.sumOf { it.total } }
+data class PendingSale(val id: Long, val items: List<SaleItem>, val time: Long, val customerName: String = "", val customerPhone: String = "", val orderType: String = "DINE_IN", val customerAddress: String = "", val shiftPerson: String = "", val tableName: String = "", val waiterName: String = "", val counterName: String = "", val chefName: String = "", val status: String = "NEW", val specialInstructions: String = "", val updatedAt: Long = time, val servedAt: Long = 0L, val kitchenProgress: String = "{}") {
+    val total: Double get() = MoneyMath.round(items.sumOf { it.total }, CurrencySettings.code)
+}
 data class Expense(val id: Long, val title: String, val category: String, val amount: Double, val time: Long, val paymentMethod: String = "CASH", val shiftId: Long = 0L)
 data class Shift(val id: Long, val person: String, val openedAt: Long, val openingCash: Double, val closedAt: Long = 0L, val closingCash: Double = 0.0, val status: String = "OPEN")
-data class DueAccount(val id: Long, val saleId: Long, val customerName: String, val customerPhone: String, val total: Double, val paid: Double, val createdAt: Long) { val balance: Double get() = (total - paid).coerceAtLeast(0.0) }
+data class DueAccount(val id: Long, val saleId: Long, val customerName: String, val customerPhone: String, val total: Double, val paid: Double, val createdAt: Long) {
+    val balance: Double get() = MoneyMath.round((total - paid).coerceAtLeast(0.0), CurrencySettings.code)
+}
 data class PaymentRecord(val id: Long, val saleId: Long, val amount: Double, val method: String, val time: Long, val shiftId: Long, val note: String = "")
 data class CompanyProfile(
     val name: String = "", val address: String = "", val phone: String = "", val footer: String = "Thank you for your visit",
@@ -32,4 +38,7 @@ data class CompanyProfile(
     val serviceChargeRate: Double = 0.0, val serviceChargeLabel: String = "Service Charge"
 )
 enum class ReceiptTheme { CLASSIC, MODERN, COMPACT, RESTAURANT, ADVANCED_PREMIUM }
-object CurrencySettings { var symbol: String = "Rs" }
+object CurrencySettings {
+    var symbol: String = "Rs"
+    var code: String = "PKR"
+}
