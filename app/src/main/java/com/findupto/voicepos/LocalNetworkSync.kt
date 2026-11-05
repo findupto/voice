@@ -257,7 +257,7 @@ object LocalNetworkSync {
       json(Response.Status.OK,JSONObject().put("session",key).put("name",account.getString("name")).put("role",role))
      }
      session.uri=="/staff/enroll"&&session.method==Method.POST -> {
-      require(firstSetup||staffSession(session)?.role in setOf("OWNER","ADMIN")){"Only an owner or admin can create staff accounts"}
+      require(firstSetup||(staffSession(session)?.role in setOf("OWNER","ADMIN")&&hasPermission(session,"manage_staff"))){"Staff management permission required"}
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin");val role=x.optString("role").uppercase()
       require(name.isNotBlank()&&name.length<=80&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       val actor=staffSession(session)?.name?:"Owner bootstrap"
@@ -306,7 +306,7 @@ object LocalNetworkSync {
      }
      session.uri=="/staff/accounts"&&session.method==Method.GET -> {
       val viewer=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
-      require(viewer.role in setOf("OWNER","ADMIN")){"Only an owner or admin can view staff accounts"}
+      require(viewer.role in setOf("OWNER","ADMIN")&&hasPermission(session,"manage_staff")){"Staff management permission required"}
       val result=JSONArray()
       synchronized(accountLock){
        val a=accounts();a.keys().forEach{key->val item=a.optJSONObject(key)?:return@forEach
@@ -318,12 +318,12 @@ object LocalNetworkSync {
      }
      session.uri=="/staff/accounts/status"&&session.method==Method.POST -> {
       val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
-      require(manager.role in setOf("OWNER","ADMIN")){"Only an owner or admin can change staff access"}
+      require(manager.role in setOf("OWNER","ADMIN")&&hasPermission(session,"manage_staff")){"Staff management permission required"}
       val actor=manager.name
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val active=x.getBoolean("active")
       require(name.isNotBlank()){"Staff name is required"}
       synchronized(accountLock){
-       val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
+       val a=accounts();val key=name.lowercase(Locale.ROOT);val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
        if(manager.role=="ADMIN")require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot change owner or admin accounts"}
        if(!active&&target.optString("role")=="OWNER"){
         var activeOwners=0
@@ -345,18 +345,18 @@ object LocalNetworkSync {
      }
      session.uri=="/staff/accounts/edit"&&session.method==Method.POST -> {
       val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
-      require(manager.role in setOf("OWNER","ADMIN")){"Only an owner or admin can edit staff accounts"}
+      require(manager.role in setOf("OWNER","ADMIN")&&hasPermission(session,"manage_staff")){"Staff management permission required"}
       val x=JSONObject(readBody(session));val oldName=x.optString("oldName").trim();val newName=x.optString("newName").trim();val role=x.optString("role").uppercase()
       require(oldName.isNotBlank()&&newName.isNotBlank()&&newName.length<=80){"Enter a staff name of 1–80 characters"}
       require(role in setOf("OWNER","ADMIN","COUNTER","WAITER","CHEF","DISHWASHER","RIDER")){"Invalid staff role"}
       require(!oldName.equals(manager.name,true)){"You cannot edit your own signed-in account"}
       synchronized(accountLock){
-       val a=accounts();val oldKey=oldName.lowercase();val target=a.optJSONObject(oldKey)?:throw IllegalArgumentException("Staff account not found")
+       val a=accounts();val oldKey=oldName.lowercase(Locale.ROOT);val target=a.optJSONObject(oldKey)?:throw IllegalArgumentException("Staff account not found")
        if(manager.role=="ADMIN"){
         require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot edit owner or admin accounts"}
         require(role !in setOf("OWNER","ADMIN")){"Only the owner can assign owner or admin roles"}
        }
-       val newKey=newName.lowercase()
+       val newKey=newName.lowercase(Locale.ROOT)
        require(newKey==oldKey||!a.has(newKey)){"Another staff account already uses that name"}
        if(target.optString("role")=="OWNER"&&role!="OWNER"){
         val activeOwners=a.keys().asSequence().mapNotNull{a.optJSONObject(it)}.count{it.optString("role")=="OWNER"&&it.optBoolean("active",true)}
@@ -374,12 +374,12 @@ object LocalNetworkSync {
      }
      session.uri=="/staff/accounts/pin"&&session.method==Method.POST -> {
       val manager=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
-      require(manager.role in setOf("OWNER","ADMIN")){"Only an owner or admin can reset staff PINs"}
+      require(manager.role in setOf("OWNER","ADMIN")&&hasPermission(session,"manage_staff")){"Staff management permission required"}
       val actor=manager.name
       val x=JSONObject(readBody(session));val name=x.optString("name").trim();val pin=x.optString("pin")
       require(name.isNotBlank()&&pin.matches(Regex("[0-9]{4,8}"))){"Enter a staff name and a 4–8 digit PIN"}
       synchronized(accountLock){
-       val a=accounts();val key=name.lowercase();val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
+       val a=accounts();val key=name.lowercase(Locale.ROOT);val target=a.optJSONObject(key)?:throw IllegalArgumentException("Staff account not found")
        if(manager.role=="ADMIN")require(target.optString("role") !in setOf("OWNER","ADMIN")){"Admins cannot reset owner or admin PINs"}
        val salt=ByteArray(16).also{SecureRandom().nextBytes(it)}
        target.put("salt",hex(salt)).put("hash",hashPin(pin,salt))
@@ -448,11 +448,23 @@ object LocalNetworkSync {
       val orderType=x.optString("orderType","DINE_IN").uppercase()
       require(orderType in setOf("DINE_IN","TAKEAWAY","DELIVERY")){"Invalid order type"}
       val incoming=PendingSale(id,items,time,x.optString("customerName").take(120),x.optString("customerPhone").take(40),orderType,x.optString("customerAddress").take(300),x.optString("shiftPerson").take(80),x.optString("tableName").take(40),x.optString("waiterName").take(80),x.optString("counterName").take(80),x.optString("chefName").take(80),"NEW",x.optString("specialInstructions").take(1000),x.optLong("updatedAt",time).coerceAtLeast(time),0L)
-      val existing=store.pending().firstOrNull{it.id==id}
-      val order=if(existing==null)incoming else incoming.copy(status=existing.status,waiterName=existing.waiterName,chefName=existing.chefName,counterName=existing.counterName,servedAt=existing.servedAt,kitchenProgress=existing.kitchenProgress,shiftPerson=existing.shiftPerson,tableName=if(incoming.tableName.isBlank())existing.tableName else incoming.tableName)
-      store.upsertRemoteOrder(order)
-      if(existing==null)store.appendOrderAudit(order.id,staffSession(session)?.name?:order.waiterName,staffSession(session)?.role?:"WAITER","ORDER_SENT","Order received by owner device")
-      json(Response.Status.OK,JSONObject().put("ok",true).put("id",order.id))
+      if(id in store.completedOrderIds()) {
+       json(Response.Status.OK,JSONObject().put("ok",true).put("id",id).put("alreadyCompleted",true))
+      } else {
+       val existing=store.pending().firstOrNull{it.id==id}
+       if(existing!=null) {
+        val samePayload=existing.time==incoming.time&&existing.items==incoming.items&&
+         existing.customerName==incoming.customerName&&existing.customerPhone==incoming.customerPhone&&
+         existing.orderType==incoming.orderType&&existing.customerAddress==incoming.customerAddress&&
+         existing.specialInstructions==incoming.specialInstructions
+        if(!samePayload)json(Response.Status.CONFLICT,JSONObject().put("error","Order ID already exists with different contents; refusing to overwrite the original order"))
+        else json(Response.Status.OK,JSONObject().put("ok",true).put("id",id).put("duplicate",true))
+       } else {
+        store.upsertRemoteOrder(incoming)
+        store.appendOrderAudit(incoming.id,staffSession(session)?.name?:incoming.waiterName,staffSession(session)?.role?:"WAITER","ORDER_SENT","Order received by owner device")
+        json(Response.Status.OK,JSONObject().put("ok",true).put("id",incoming.id))
+       }
+      }
      }
      session.uri=="/orders/kitchen"&&session.method==Method.POST -> {
       val x=JSONObject(readBody(session));val authenticated=staffSession(session)?:throw IllegalArgumentException("Staff sign-in required")
