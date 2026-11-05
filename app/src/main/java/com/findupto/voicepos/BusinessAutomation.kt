@@ -23,7 +23,19 @@ class BusinessAutomationStore(context: Context) {
     var dailySummary: Boolean
         get() = prefs.getBoolean("daily_summary", true)
         set(value) { prefs.edit().putBoolean("daily_summary", value).apply() }
-    var purchaseDrafts: Boolean\n        get() = prefs.getBoolean("purchase_drafts", true)\n        set(value) { prefs.edit().putBoolean("purchase_drafts", value).apply() }\n    var overdueDuesAlerts: Boolean\n        get() = prefs.getBoolean("overdue_dues", true)\n        set(value) { prefs.edit().putBoolean("overdue_dues", value).apply() }\n    var shiftReminders: Boolean\n        get() = prefs.getBoolean("shift_reminders", true)\n        set(value) { prefs.edit().putBoolean("shift_reminders", value).apply() }\n    var profitInsights: Boolean\n        get() = prefs.getBoolean("profit_insights", true)\n        set(value) { prefs.edit().putBoolean("profit_insights", value).apply() }\n    var automationEnabled: Boolean
+    var purchaseDrafts: Boolean
+        get() = prefs.getBoolean("purchase_drafts", true)
+        set(value) { prefs.edit().putBoolean("purchase_drafts", value).apply() }
+    var overdueDuesAlerts: Boolean
+        get() = prefs.getBoolean("overdue_dues", true)
+        set(value) { prefs.edit().putBoolean("overdue_dues", value).apply() }
+    var shiftReminders: Boolean
+        get() = prefs.getBoolean("shift_reminders", true)
+        set(value) { prefs.edit().putBoolean("shift_reminders", value).apply() }
+    var profitInsights: Boolean
+        get() = prefs.getBoolean("profit_insights", true)
+        set(value) { prefs.edit().putBoolean("profit_insights", value).apply() }
+    var automationEnabled: Boolean
         get() = prefs.getBoolean("enabled", true)
         set(value) { prefs.edit().putBoolean("enabled", value).apply() }
     fun lastRun(): Long = prefs.getLong("last_run", 0L)
