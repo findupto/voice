@@ -8,6 +8,9 @@ import android.content.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.compose.runtime.*
 import java.io.IOException
 import java.util.UUID
@@ -29,6 +32,8 @@ class PrinterManager(private val context: Context, private val store: Store) {
     }
     private val main = Handler(Looper.getMainLooper())
     private val socketLock = Any()
+    private val pendingLock = Any()
+    private val pendingPrefs = context.getSharedPreferences("voice_printer_jobs", Context.MODE_PRIVATE)
     private val pendingPrints = AtomicInteger(0)
     @Volatile private var customerSocket: BluetoothSocket? = null
     @Volatile private var kitchenSocket: BluetoothSocket? = null
@@ -202,14 +207,20 @@ class PrinterManager(private val context: Context, private val store: Store) {
     fun connectCustomer(d: BluetoothDevice) {
         connectSocket(d, { customerSocket }, { customerSocket = it }) {
             customerConnected = it
-            if (it) store.setCustomerPrinterAddress(d.address)
+            if (it) {
+                store.setCustomerPrinterAddress(d.address)
+                drainPending(false)
+            }
         }
     }
 
     fun connectKitchen(d: BluetoothDevice) {
         connectSocket(d, { kitchenSocket }, { kitchenSocket = it }) {
             kitchenConnected = it
-            if (it) store.setKitchenPrinterAddress(d.address)
+            if (it) {
+                store.setKitchenPrinterAddress(d.address)
+                drainPending(true)
+            }
         }
     }
 
@@ -244,12 +255,13 @@ class PrinterManager(private val context: Context, private val store: Store) {
             return false
         }
         val socket = if (kitchen) kitchenSocket else customerSocket
-        if (socket == null || !socket.isConnected) {
-            if (kitchen) kitchenConnected = false else customerConnected = false
-            report("$label not sent: printer is disconnected. Reconnect it in Printer Settings.", true)
-            return false
-        }
         val payload = bytes.copyOf()
+        if (socket == null || !socket.isConnected) {
+            persistPending(kitchen, payload)
+            if (kitchen) kitchenConnected = false else customerConnected = false
+            report("$label saved for printing when its printer reconnects")
+            return true
+        }
         pendingPrints.incrementAndGet()
         printing = true
         report("Queued $label…")
@@ -286,6 +298,60 @@ class PrinterManager(private val context: Context, private val store: Store) {
             }
         }
         return true // Accepted into the serialized print queue; completion is shown in Printer Settings.
+    }
+
+
+    private fun persistPending(kitchen: Boolean, bytes: ByteArray) {
+        synchronized(pendingLock) {
+            val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+            jobs.put(JSONObject().put("id", UUID.randomUUID().toString())
+                .put("kitchen", kitchen)
+                .put("payload", Base64.encodeToString(bytes, Base64.NO_WRAP)))
+            pendingPrefs.edit().putString("jobs", jobs.toString()).apply()
+        }
+    }
+
+    /** Replays persisted jobs for this printer only after a successful reconnection. */
+    private fun drainPending(kitchen: Boolean) {
+        worker.execute {
+            while (true) {
+                val job = synchronized(pendingLock) {
+                    val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+                    (0 until jobs.length()).firstNotNullOfOrNull { i ->
+                        runCatching { jobs.getJSONObject(i) }.getOrNull()?.takeIf { it.optBoolean("kitchen") == kitchen }
+                    }
+                } ?: break
+                val socket = if (kitchen) kitchenSocket else customerSocket
+                if (socket == null || !socket.isConnected) break
+                try {
+                    val payload = Base64.decode(job.getString("payload"), Base64.DEFAULT)
+                    synchronized(socketLock) {
+                        val active = if (kitchen) kitchenSocket else customerSocket
+                        if (active == null || !active.isConnected) throw IOException("Printer connection was lost")
+                        active.outputStream.write(payload)
+                        active.outputStream.flush()
+                    }
+                    synchronized(pendingLock) {
+                        val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+                        val remaining = JSONArray()
+                        for (i in 0 until jobs.length()) {
+                            val item = jobs.optJSONObject(i) ?: continue
+                            if (item.optString("id") != job.optString("id")) remaining.put(item)
+                        }
+                        pendingPrefs.edit().putString("jobs", remaining.toString()).apply()
+                    }
+                    report(if (kitchen) "Queued kitchen ticket printed" else "Queued customer receipt printed")
+                } catch (e: Exception) {
+                    synchronized(socketLock) {
+                        if (kitchen) { runCatching { kitchenSocket?.close() }; kitchenSocket = null }
+                        else { runCatching { customerSocket?.close() }; customerSocket = null }
+                    }
+                    main.post { if (kitchen) kitchenConnected = false else customerConnected = false }
+                    report("Queued print failed: ${e.message ?: "printer connection lost"}. Job retained for retry.", true)
+                    break
+                }
+            }
+        }
     }
 
     fun close() {
