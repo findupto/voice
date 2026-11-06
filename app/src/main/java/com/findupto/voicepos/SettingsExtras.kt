@@ -32,12 +32,30 @@ import androidx.compose.ui.unit.dp
     var shifts by remember { mutableStateOf(settings.shiftReminders) }
     var profit by remember { mutableStateOf(settings.profitInsights) }
     val reorderDrafts = remember(context) { runCatching { org.json.JSONArray(context.getSharedPreferences("voice_business_automation_v1", android.content.Context.MODE_PRIVATE).getString("purchase_order_drafts", "[]")) }.getOrDefault(org.json.JSONArray()) }
+    val liveStore = remember(context) { Store(context) }
+    val liveInventory = remember(context) { InventoryStore(context) }
+    val liveSupplierDues = remember(context) { SupplierDueStore(context) }
+    val lowStockCount = remember(context) { liveInventory.lowStock().size }
+    val openOrderCount = remember(context) { liveStore.pending().count { it.status !in setOf("SERVED", "DELIVERED", "BILLED") } }
+    val customerDueCount = remember(context) { liveStore.dues().count { it.balance > 0.005 } }
+    val supplierDueCount = remember(context) { liveSupplierDues.all().count { it.balance > 0.005 } }
+    val activeShiftCount = remember(context) { liveStore.activeShifts().size }
     AlertDialog(
         onDismissRequest = close,
         title = { Text("Business Automation") },
         text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Let Voice POS monitor routine operations in the background. Financial actions and supplier orders always require owner approval.", style = MaterialTheme.typography.bodySmall)
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("LIVE BUSINESS PULSE", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                        Text("$lowStockCount low-stock items • $openOrderCount active orders")
+                        Text("$customerDueCount customer balances • $supplierDueCount supplier bills")
+                        Text("$activeShiftCount open staff shifts • Last check: " +
+                            if (settings.lastRun() == 0L) "Not run yet" else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(settings.lastRun())),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text("Automation engine", fontWeight = FontWeight.Bold); Text("Enable scheduled checks", style = MaterialTheme.typography.bodySmall) }
                     Switch(enabled, { enabled = it })
