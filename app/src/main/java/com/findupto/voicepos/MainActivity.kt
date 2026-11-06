@@ -50,8 +50,6 @@ class MainActivity : ComponentActivity() {
         StaffDefaults.seed(this)
         store=Store(this)
         PosBackgroundSync.schedule(this)
-        // Keep the local business workflow engine alive across app restarts.
-        BusinessAutomation.schedule(this)
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else startOrderAlerts()
         printer=PrinterManager(this,store)
         val bluetoothPermissions=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -75,6 +73,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Schedule only after notification permission is available; this also recovers after returning from Settings.
+        if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            BusinessAutomation.schedule(this)
+        }
         // Reconcile the Admin/Owner server and saved staff connection whenever the app returns.
         runCatching {
             val currentStore = if (::store.isInitialized) store else Store(this)
