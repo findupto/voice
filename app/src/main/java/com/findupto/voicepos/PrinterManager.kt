@@ -118,7 +118,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
         val customer = store.customerPrinterAddress()
         val kitchen = store.kitchenPrinterAddress()
         if (customer.isNotBlank()) device(customer)?.let { connectCustomer(it) }
-        if (kitchen.isNotBlank()) device(kitchen)?.let { connectKitchen(it) }
+        if (kitchen.isNotBlank() && kitchen != customer) device(kitchen)?.let { connectKitchen(it) }
     }
 
     fun discover() {
