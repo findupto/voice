@@ -116,7 +116,9 @@ class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Wor
         }
         val cal = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
         val dayKey = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(cal.time)
-        if (settings.dailySummary && prefs.getString("daily_summary_day", "") != dayKey) {
+        // Close-of-day reporting must not fire on the first morning app launch.
+        val isCloseOfBusiness = Calendar.getInstance().get(Calendar.HOUR_OF_DAY) >= 21
+        if (settings.dailySummary && isCloseOfBusiness && prefs.getString("daily_summary_day", "") != dayKey) {
             val today = store.sales().filter { it.time >= cal.timeInMillis }
             val revenue = today.sumOf { it.total }
             val expenses = store.expenses().filter { it.time >= cal.timeInMillis }.sumOf { it.amount }
@@ -132,7 +134,7 @@ class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Wor
             val grossProfit = revenue - foodCost
             val estimatedNet = grossProfit - expenseTotal
             val profitDay = "profit_${dayKey}"
-            if (prefs.getString("profit_insight_day", "") != profitDay) {
+            if (isCloseOfBusiness && prefs.getString("profit_insight_day", "") != profitDay) {
                 notify(8207, "Daily estimated profit insight",
                     "Revenue ${"%.2f".format(revenue)} • Recipe cost ${"%.2f".format(foodCost)} • Expenses ${"%.2f".format(expenseTotal)} • Est. net ${"%.2f".format(estimatedNet)}")
                 prefs.edit().putString("profit_insight_day", profitDay).apply()
