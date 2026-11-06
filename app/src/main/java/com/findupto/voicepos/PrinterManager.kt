@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Bluetooth ESC/POS transport.
@@ -28,6 +29,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
     }
     private val main = Handler(Looper.getMainLooper())
     private val socketLock = Any()
+    private val pendingPrints = AtomicInteger(0)
     @Volatile private var customerSocket: BluetoothSocket? = null
     @Volatile private var kitchenSocket: BluetoothSocket? = null
     private val found = linkedMapOf<String, BluetoothDevice>()
@@ -111,7 +113,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
         val customer = store.customerPrinterAddress()
         val kitchen = store.kitchenPrinterAddress()
         if (customer.isNotBlank()) device(customer)?.let { connectCustomer(it) }
-        if (kitchen.isNotBlank() && kitchen != customer) device(kitchen)?.let { connectKitchen(it) }
+        if (kitchen.isNotBlank()) device(kitchen)?.let { connectKitchen(it) }
     }
 
     fun discover() {
@@ -248,8 +250,9 @@ class PrinterManager(private val context: Context, private val store: Store) {
             return false
         }
         val payload = bytes.copyOf()
+        pendingPrints.incrementAndGet()
         printing = true
-        report("Printing $label…")
+        report("Queued $label…")
         worker.execute {
             try {
                 synchronized(socketLock) {
@@ -265,7 +268,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     output.flush()
                 }
                 main.post {
-                    printing = false
+                    printing = pendingPrints.decrementAndGet() > 0
                     lastPrintedAt = System.currentTimeMillis()
                     lastStatus = "$label sent successfully"
                     lastError = ""
@@ -276,7 +279,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     else { runCatching { customerSocket?.close() }; customerSocket = null }
                 }
                 main.post {
-                    printing = false
+                    printing = pendingPrints.decrementAndGet() > 0
                     if (kitchen) kitchenConnected = false else customerConnected = false
                     report("Print failed: ${e.message ?: "printer connection lost"}. Reconnect and retry.", true)
                 }
