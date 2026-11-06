@@ -44,6 +44,7 @@ class BusinessAutomationStore(context: Context) {
 class BusinessAutomationWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
         return try {
+        if (Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return Result.success()
         val store = Store(applicationContext)
         if (store.staffRole() !in setOf("OWNER", "ADMIN")) return Result.success()
         val settings = BusinessAutomationStore(applicationContext)
