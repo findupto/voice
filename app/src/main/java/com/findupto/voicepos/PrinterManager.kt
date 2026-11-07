@@ -484,7 +484,12 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     }
                     refreshPendingCounts()
                     if (!removed) {
-                        report("Queued job was sent, but queue state could not be saved. Check paper before retrying.", true)
+                        val paused = markPendingForReview(job.optString("id"))
+                        report(
+                            if (paused) "Queued job was sent but queue cleanup failed. It is paused for paper review."
+                            else "Queued job was sent but queue cleanup failed. Check paper before reconnecting or retrying.",
+                            true
+                        )
                         break
                     }
                     report(if (kitchen) "Queued kitchen ticket sent to printer" else "Queued customer receipt sent to printer")
