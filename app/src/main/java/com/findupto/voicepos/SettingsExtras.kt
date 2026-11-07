@@ -71,6 +71,14 @@ import androidx.compose.ui.unit.dp
                     TextButton(onClick={printer.disconnectKitchen()},Modifier.weight(1f),enabled=printer.kitchenConnected){Text("DISCONNECT KITCHEN")}
                 }
                 Text("Waiting to send: Receipt ${printer.pendingCustomerCount} • Kitchen ${printer.pendingKitchenCount}",style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold)
+                if (printer.pendingCustomerReviewCount + printer.pendingKitchenReviewCount > 0) {
+                    Text("Paused for paper check: Receipt ${printer.pendingCustomerReviewCount} • Kitchen ${printer.pendingKitchenReviewCount}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error,fontWeight=FontWeight.SemiBold)
+                    Text("These jobs may have printed partially and will not auto-retry. Check the paper, re-print from Sales or Kitchen if missing, then clear the paused entry.",style=MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick={printer.clearReviewJobs(false)},Modifier.weight(1f),enabled=printer.pendingCustomerReviewCount>0){Text("CLEAR RECEIPT REVIEW")}
+                        TextButton(onClick={printer.clearReviewJobs(true)},Modifier.weight(1f),enabled=printer.pendingKitchenReviewCount>0){Text("CLEAR KITCHEN REVIEW")}
+                    }
+                }
                 Text("Offline jobs are saved for their selected printer and retry after reconnect. A live failure may be partial; check the paper before using RE-PRINT to avoid duplicates.",style=MaterialTheme.typography.bodySmall)
             }
         },
