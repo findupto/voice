@@ -46,7 +46,7 @@ class ReceiptLayoutTest {
             assertTrue(rows.size > 1)
             assertTrue(rows.all { it.length == columns })
             assertTrue(rows.joinToString(" ").contains("Montgomery-Smith"))
-            assertTrue(rows.last().endsWith("03001234567"))
+            assertTrue(rows.first().endsWith("03001234567"))
         }
     }
 
