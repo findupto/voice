@@ -102,6 +102,16 @@ private fun escpos(
             ReceiptLayout.wrap(text, layout.columns).forEach { w(it + "\n") }
         }
     }
+    fun writePairRows(left: String, right: String) {
+        ReceiptLayout.pairRows(left, right, paperWidthMm).forEach { line ->
+            if (containsUrdu(line)) {
+                out.write(ReceiptImage.escPosLine(line, layout.rasterDots))
+                w("\n")
+            } else {
+                w(line + "\n")
+            }
+        }
+    }
     val productItems = items.filterNot(::isDiscountItem)
     val subtotal = productItems.sumOf { it.total }
     val discount = cartDiscount(items).coerceAtMost(subtotal)
@@ -115,11 +125,11 @@ private fun escpos(
     writeHeader(p,out,time,paperWidthMm)
     c(0x1B,0x45,1); writeWrapped(title); c(0x1B,0x45,0)
     w(ReceiptLayout.pair("Order Type",orderType.replace('_',' '),paperWidthMm)+"\n")
-    if (shiftPerson.isNotBlank()) ReceiptLayout.pairRows("Served by",shiftPerson,paperWidthMm).forEach { writeWrapped(it) }
+    if (shiftPerson.isNotBlank()) writePairRows("Served by", shiftPerson)
     if (customerName.isNotBlank() || customerPhone.isNotBlank() || customerAddress.isNotBlank()) {
         w(ReceiptLayout.separator(paperWidthMm)+"\n")
         if (customerName.isNotBlank() || customerPhone.isNotBlank()) {
-            ReceiptLayout.pairRows(customerName.ifBlank{"Customer"},customerPhone,paperWidthMm).forEach { writeWrapped(it) }
+            writePairRows(customerName.ifBlank{"Customer"}, customerPhone)
         }
         if (customerAddress.isNotBlank()) writeWrapped("Address: $customerAddress")
     }
@@ -133,10 +143,10 @@ private fun escpos(
     w(ReceiptLayout.pair("Bill",money(subtotal),paperWidthMm)+"\n")
     if (discount>0) {
         val label=items.filter(::isDiscountItem).joinToString(" / "){discountLabel(it)}.ifBlank{"Discount"}
-        ReceiptLayout.pairRows(label,"- "+money(discount),paperWidthMm).forEach { writeWrapped(it) }
+        writePairRows(label, "- "+money(discount))
     }
-    if (serviceCharge>0) ReceiptLayout.pairRows(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(serviceCharge),paperWidthMm).forEach { writeWrapped(it) }
-    if (taxAmount>0) ReceiptLayout.pairRows(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(taxAmount),paperWidthMm).forEach { writeWrapped(it) }
+    if (serviceCharge>0) writePairRows(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%", money(serviceCharge))
+    if (taxAmount>0) writePairRows(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%", money(taxAmount))
     c(0x1B,0x45,1); w(ReceiptLayout.pair("TOTAL BILL",money(total),paperWidthMm)+"\n"); c(0x1B,0x45,0)
     if (paymentMethod.isNotBlank()) w(ReceiptLayout.pair("Paid via",paymentMethod,paperWidthMm)+"\n")
     if (dueAmount>0.005) { w(ReceiptLayout.pair("Paid",money(paidAmount),paperWidthMm)+"\n"); w(ReceiptLayout.pair("BALANCE DUE",money(dueAmount),paperWidthMm)+"\n") }
