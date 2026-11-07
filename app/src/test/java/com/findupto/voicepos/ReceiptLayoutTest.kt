@@ -35,6 +35,31 @@ class ReceiptLayoutTest {
         assertTrue(rows.joinToString(" ").contains("Burger"))
     }
 
+    @Test fun longCustomerNamesWrapWithoutTruncationOnBothWidths() {
+        for (width in listOf(58, 80)) {
+            val rows = ReceiptLayout.pairRows(
+                "Customer: Christopher Montgomery-Smith",
+                "03001234567",
+                width
+            )
+            val columns = ReceiptPaperWidth.fromMillimeters(width).columns
+            assertTrue(rows.size > 1)
+            assertTrue(rows.all { it.length == columns })
+            assertTrue(rows.joinToString(" ").contains("Montgomery-Smith"))
+            assertTrue(rows.last().endsWith("03001234567"))
+        }
+    }
+
+    @Test fun longUnbrokenNamesAreSplitToThePaperWidth() {
+        for (width in listOf(58, 80)) {
+            val columns = ReceiptPaperWidth.fromMillimeters(width).columns
+            val lines = ReceiptLayout.wrap("X".repeat(columns + 7), columns)
+            assertEquals(2, lines.size)
+            assertTrue(lines.all { it.length <= columns })
+            assertEquals(columns + 7, lines.joinToString("").length)
+        }
+    }
+
     @Test fun separatorsMatchPaperWidth() {
         assertEquals(32, ReceiptLayout.separator(58).length)
         assertEquals(48, ReceiptLayout.separator(80).length)
