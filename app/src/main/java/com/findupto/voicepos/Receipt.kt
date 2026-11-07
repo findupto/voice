@@ -186,7 +186,7 @@ fun kitchenReceipt(s: PendingSale, p: CompanyProfile, t: ReceiptTheme, paperWidt
     c(0x1B,0x45,1,0x1D,0x21,0x22);w("ORDER ITEMS\n");c(0x1D,0x21,0,0x1B,0x45,0)
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     s.items.filterNot(::isDiscountItem).forEach { item ->
-        ReceiptLayout.wrap("${item.qty} x ${item.name}",width).forEach { line ->
+        ReceiptLayout.wrap("${item.qty} x ${item.name}",(width / 2).coerceAtLeast(1)).forEach { line ->
             c(0x1B,0x45,1,0x1D,0x21,0x11);w(line+"\n");c(0x1D,0x21,0,0x1B,0x45,0)
         }
     }
