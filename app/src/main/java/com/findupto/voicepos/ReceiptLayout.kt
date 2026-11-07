@@ -34,6 +34,16 @@ object ReceiptLayout {
         return l + " ".repeat(width - l.length - r.length) + r
     }
 
+    fun pairRows(left: String, right: String, paperWidthMm: Int): List<String> {
+        val width = ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns
+        val rightText = fitEnd(right, (width - 2).coerceAtLeast(1))
+        val leftWidth = (width - rightText.length - 1).coerceAtLeast(1)
+        val leftLines = wrap(left, leftWidth)
+        val first = leftLines.first().padEnd(leftWidth) + " " + rightText
+        val continuationPadding = " " + " ".repeat(rightText.length)
+        return listOf(first) + leftLines.drop(1).map { it.padEnd(leftWidth) + continuationPadding }
+    }
+
     fun wrap(value: String, maxColumns: Int): List<String> {
         val width = maxColumns.coerceAtLeast(1)
         val clean = fit(value, Int.MAX_VALUE)
