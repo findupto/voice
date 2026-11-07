@@ -57,6 +57,50 @@ internal fun quantityInStockUnit(quantity: Double, recipeUnit: String, stockUnit
     return null
 }
 
+internal data class SaleStockRequirementPlan(val requiredByStockId: Map<Long, Double>, val issues: List<String>)
+
+internal fun saleStockRequirementPlan(
+    saleItems: List<SaleItem>, recipes: List<ProductRecipe>, stockItems: List<InventoryStockItem>
+): SaleStockRequirementPlan {
+    val recipeByProduct = recipes.associateBy { canonicalProductKey(it.productName) }
+    val stockByName = stockItems.associateBy { canonicalProductKey(it.name) }
+    val required = linkedMapOf<Long, Double>()
+    val issues = mutableListOf<String>()
+    for (sold in saleItems) {
+        if (sold.name.startsWith(CART_DISCOUNT_PREFIX)) continue
+        if (sold.qty <= 0) { issues += "Invalid quantity for ${sold.name}"; continue }
+        val recipe = recipeByProduct[canonicalProductKey(sold.name)] ?: continue
+        for (component in recipe.components) {
+            if (!component.quantity.isFinite() || component.quantity <= 0.0) {
+                issues += "Invalid recipe quantity for ${component.stockName}"
+                continue
+            }
+            val stock = stockByName[canonicalProductKey(component.stockName)]
+            if (stock == null) {
+                issues += "Recipe for ${sold.name}: stock item '${component.stockName}' was not found"
+                continue
+            }
+            if (!stock.quantity.isFinite() || stock.quantity < 0.0) {
+                issues += "Invalid on-hand quantity for ${stock.name}"
+                continue
+            }
+            val converted = quantityInStockUnit(component.quantity, component.unit, stock.unit)
+            if (converted == null) {
+                issues += "Recipe for ${sold.name}: ${component.unit} cannot be converted to ${stock.unit} for ${stock.name}"
+                continue
+            }
+            val amount = converted * sold.qty
+            val combined = (required[stock.id] ?: 0.0) + amount
+            if (!amount.isFinite() || amount <= 0.0 || !combined.isFinite()) {
+                issues += "Invalid stock requirement for ${stock.name}"
+                continue
+            }
+            required[stock.id] = combined
+        }
+    }
+    return SaleStockRequirementPlan(required, issues)
+}
+
 /** Local-first stock ledger. Recipe keys use the same canonical product naming as sales analytics. */
 class InventoryStore(context: Context) {
     private val prefs = context.getSharedPreferences("restaurant_inventory_v1", Context.MODE_PRIVATE)
@@ -179,21 +223,16 @@ class InventoryStore(context: Context) {
     }
     /** Checks all recipe requirements together before a sale is finalized. */
     fun insufficientForSale(saleItems: List<SaleItem>): List<String> {
-        val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
-        val required = linkedMapOf<String, Double>()
-        val stockByKey = items().associateBy { canonicalProductKey(it.name) }
-        saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach { sold ->
-            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach { component ->
-                val key = canonicalProductKey(component.stockName)
-                val stock = stockByKey[key] ?: return@forEach
-                val amount = quantityInStockUnit(component.quantity, component.unit, stock.unit) ?: return@forEach
-                required[key] = (required[key] ?: 0.0) + amount * sold.qty
-            }
+        val stock = items()
+        val plan = saleStockRequirementPlan(saleItems, recipes(), stock)
+        val stockById = stock.associateBy { it.id }
+        val shortages = plan.requiredByStockId.mapNotNull { (stockId, amount) ->
+            val item = stockById[stockId] ?: return@mapNotNull "Recipe stock item $stockId is missing"
+            if (item.quantity + 1e-9 < amount) {
+                "${item.name}: need ${"%.2f".format(java.util.Locale.US, amount)} ${item.unit}, available ${"%.2f".format(java.util.Locale.US, item.quantity)}"
+            } else null
         }
-        return required.mapNotNull { (key, amount) ->
-            val stock = stockByKey[key] ?: return@mapNotNull null
-            if (stock.quantity + 1e-9 < amount) "${stock.name}: need ${"%.2f".format(amount)} ${stock.unit}, available ${"%.2f".format(stock.quantity)}" else null
-        }
+        return (plan.issues + shortages).distinct()
     }
 
     @Synchronized fun consumeSale(saleId: Long, saleItems: List<SaleItem>): Boolean {
@@ -205,23 +244,18 @@ class InventoryStore(context: Context) {
             processed.put(saleId)
             return prefs.edit().putString("consumed_sales", processed.toString()).commit()
         }
-        val recipeMap = recipes().associateBy { canonicalProductKey(it.productName) }
         val stock = items().toMutableList()
+        val plan = saleStockRequirementPlan(saleItems, recipes(), stock)
+        if (plan.issues.isNotEmpty()) return false
         val required = linkedMapOf<Int, Double>()
-        saleItems.filter { !it.name.startsWith(CART_DISCOUNT_PREFIX) }.forEach saleLoop@ { sold ->
-            if (sold.qty <= 0) return false
-            recipeMap[canonicalProductKey(sold.name)]?.components.orEmpty().forEach componentLoop@ { component ->
-                val index = stock.indexOfFirst { canonicalProductKey(it.name) == canonicalProductKey(component.stockName) }
-                if (index < 0) return@componentLoop
-                val used = quantityInStockUnit(component.quantity, component.unit, stock[index].unit)
-                    ?: return@componentLoop
-                if (!used.isFinite() || used < 0.0) return false
-                required[index] = (required[index] ?: 0.0) + used * sold.qty
-            }
+        plan.requiredByStockId.forEach { (stockId, amount) ->
+            val index = stock.indexOfFirst { it.id == stockId }
+            if (index < 0 || !amount.isFinite() || amount <= 0.0) return false
+            required[index] = amount
         }
         // Recheck under the same lock as stock adjustments so a stale pre-check
         // cannot drive inventory below zero.
-        if (required.any { (index, amount) -> !amount.isFinite() || stock[index].quantity + 1e-9 < amount }) return false
+        if (required.any { (index, amount) -> stock[index].quantity + 1e-9 < amount }) return false
         val now = System.currentTimeMillis()
         required.forEach { (index, amount) -> stock[index] = stock[index].copy(quantity = stock[index].quantity - amount, updatedAt = now) }
         val movementArray = JSONArray(prefs.getString("movements", "[]"))
@@ -237,6 +271,53 @@ class InventoryStore(context: Context) {
             .putString("movements", movementArray.toString())
             .putString("consumed_sales", processed.toString()).commit()
     }
+    @Synchronized fun rollbackSaleConsumption(saleId: Long): Boolean {
+        if (saleId <= 0L) return false
+        val stock = items().toMutableList()
+        val movements = JSONArray(prefs.getString("movements", "[]"))
+        val remaining = JSONArray()
+        var foundMovement = false
+        for (i in 0 until movements.length()) {
+            val movement = movements.optJSONObject(i)
+            if (movement == null || movement.optString("referenceId") != "sale:$saleId") {
+                remaining.put(movements.opt(i))
+                continue
+            }
+            val delta = movement.optDouble("quantity", 0.0)
+            val index = stock.indexOfFirst { it.id == movement.optLong("stockId") }
+            if (!delta.isFinite() || delta > 0.0 || (delta < 0.0 && index < 0)) return false
+            if (delta < 0.0) stock[index] = stock[index].copy(
+                quantity = stock[index].quantity - delta, updatedAt = System.currentTimeMillis()
+            )
+            foundMovement = true
+        }
+        val processed = JSONArray(prefs.getString("consumed_sales", "[]"))
+        val nextProcessed = JSONArray()
+        var foundMarker = false
+        for (i in 0 until processed.length()) {
+            val id = processed.optLong(i)
+            if (id == saleId) foundMarker = true else nextProcessed.put(id)
+        }
+        if (!foundMovement && !foundMarker) return true
+        return prefs.edit().putString("items", itemsArray(stock).toString())
+            .putString("movements", remaining.toString())
+            .putString("consumed_sales", nextProcessed.toString()).commit()
+    }
+
+    /** Restores stock consumed by a checkout that crashed before its sale record committed. */
+    @Synchronized fun reconcileSaleConsumptions(validSaleIds: Set<Long>): Int {
+        val candidates = linkedSetOf<Long>()
+        val processed = JSONArray(prefs.getString("consumed_sales", "[]"))
+        for (i in 0 until processed.length()) candidates += processed.optLong(i)
+        val movements = JSONArray(prefs.getString("movements", "[]"))
+        for (i in 0 until movements.length()) {
+            val reference = movements.optJSONObject(i)?.optString("referenceId").orEmpty()
+            if (reference.startsWith("sale:")) reference.removePrefix("sale:").toLongOrNull()?.let { candidates += it }
+        }
+        val orphaned = candidates.filter { it > 0L && it !in validSaleIds }
+        return orphaned.count { rollbackSaleConsumption(it) }
+    }
+
     fun consumeSale(saleItems: List<SaleItem>) { consumeSale(System.currentTimeMillis(), saleItems) }
     private fun itemsArray(xs: List<InventoryStockItem>) = JSONArray().apply {
         xs.forEach { x -> put(JSONObject().put("id", x.id).put("name", x.name).put("category", x.category)

@@ -4,6 +4,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Currency
 import java.util.Locale
+import java.util.Locale
 
 /**
  * Currency-aware decimal arithmetic for POS totals.
@@ -24,6 +25,12 @@ object MoneyMath {
 
     fun round(value: Double, currencyCode: String = "PKR"): Double =
         decimal(value).setScale(fractionDigits(currencyCode), RoundingMode.HALF_UP).toDouble()
+
+    fun format(value: Double, currencyCode: String = "PKR"): String {
+        val digits = fractionDigits(currencyCode)
+        val rounded = decimal(value).setScale(digits, RoundingMode.HALF_UP).toDouble()
+        return String.format(Locale.US, "%,.${digits}f", rounded)
+    }
 
     fun multiply(unitPrice: Double, quantity: Int, currencyCode: String = "PKR"): Double {
         require(unitPrice >= 0.0 && quantity >= 0) { "Price and quantity cannot be negative" }

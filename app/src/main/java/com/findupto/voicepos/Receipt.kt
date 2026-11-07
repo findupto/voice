@@ -7,35 +7,166 @@ import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
-fun money(v:Double)="${CurrencySettings.symbol} "+String.format(Locale.US,"%,.0f",v)
-fun date(v:Long)=SimpleDateFormat("dd MMM yyyy, hh:mm a",Locale.US).format(Date(v))
-private const val W=42
-private const val SEP="------------------------------------------"
-private fun isDiscountItem(x:SaleItem)=x.name.startsWith(CART_DISCOUNT_PREFIX)
-private fun discountLabel(x:SaleItem)=x.name.removePrefix(CART_DISCOUNT_PREFIX).trim().ifBlank{"Discount"}
-private fun containsUrdu(s:String)=s.any{it.code in 0x0600..0x06FF||it.code in 0x0750..0x077F||it.code in 0x08A0..0x08FF||it.code in 0xFB50..0xFDFF||it.code in 0xFE70..0xFEFF}
-private fun fit(s:String,n:Int)=s.replace("\n"," ").replace("×","x").replace("—","-").replace("–","-").replace("•","*").replace("“","\"").replace("”","\"").replace("’","\u0027").trim().take(n)
-private fun pair(a:String,b:String):String{val r=fit(b,W);val l=fit(a,W-r.length-1);return l+" ".repeat((W-l.length-r.length).coerceAtLeast(1))+r}
-private fun cols(name:String,qty:String,price:String):String{val pw=11;val qw=6;val nw=W-qw-pw-2;return fit(name,nw).padEnd(nw)+" "+fit(qty,qw).padStart(qw)+" "+fit(price,pw).padStart(pw)}
+fun money(v: Double) = "${CurrencySettings.symbol} " + MoneyMath.format(v, CurrencySettings.code)
+fun date(v: Long) = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US).format(Date(v))
+private fun isDiscountItem(x: SaleItem) = x.name.startsWith(CART_DISCOUNT_PREFIX)
+private fun discountLabel(x: SaleItem) = x.name.removePrefix(CART_DISCOUNT_PREFIX).trim().ifBlank { "Discount" }
+private fun containsUrdu(s: String) = s.any {
+    it.code in 0x0600..0x06FF || it.code in 0x0750..0x077F || it.code in 0x08A0..0x08FF ||
+        it.code in 0xFB50..0xFDFF || it.code in 0xFE70..0xFEFF
+}
 
-private fun logo(path:String):ByteArray?{
-    val src=runCatching{BitmapFactory.decodeFile(path)}.getOrNull()?:return null
-    if(src.width<=0||src.height<=0)return null
-    val maxW=280;val maxH=88;val scale=minOf(1f,maxW.toFloat()/src.width,maxH.toFloat()/src.height)
-    val bmp=if(scale<1f)Bitmap.createScaledBitmap(src,(src.width*scale).toInt().coerceAtLeast(8),(src.height*scale).toInt().coerceAtLeast(8),true)else src
-    val wb=(bmp.width+7)/8;val out=ByteArrayOutputStream()
-    out.write(byteArrayOf(0x1D,0x76,0x30,0,wb.toByte(),(wb shr 8).toByte(),bmp.height.toByte(),(bmp.height shr 8).toByte()))
-    for(y in 0 until bmp.height)for(q in 0 until wb){var v=0;for(bit in 0..7){val x=q*8+bit;if(x<bmp.width){val c=bmp.getPixel(x,y);val alpha=Color.alpha(c);val g=(Color.red(c)*299+Color.green(c)*587+Color.blue(c)*114)/1000;if(alpha>=100&&g<190)v=v or(1 shl (7-bit))}};out.write(v)}
+private fun logo(path: String, paperWidthMm: Int): ByteArray? {
+    val src = runCatching { BitmapFactory.decodeFile(path) }.getOrNull() ?: return null
+    if (src.width <= 0 || src.height <= 0) { src.recycle(); return null }
+    val layout = ReceiptPaperWidth.fromMillimeters(paperWidthMm)
+    val maxWidth = (layout.rasterDots - 24).coerceAtLeast(8)
+    val maxHeight = if (layout == ReceiptPaperWidth.MM_80) 120 else 88
+    val scale = minOf(1f, maxWidth.toFloat() / src.width, maxHeight.toFloat() / src.height)
+    val bmp = if (scale < 1f) Bitmap.createScaledBitmap(src,
+        (src.width * scale).toInt().coerceAtLeast(8), (src.height * scale).toInt().coerceAtLeast(8), true) else src
+    val bytesPerRow = (bmp.width + 7) / 8
+    val out = ByteArrayOutputStream()
+    out.write(byteArrayOf(0x1D,0x76,0x30,0,bytesPerRow.toByte(),(bytesPerRow shr 8).toByte(),bmp.height.toByte(),(bmp.height shr 8).toByte()))
+    for (y in 0 until bmp.height) for (column in 0 until bytesPerRow) {
+        var value = 0
+        for (bit in 0..7) {
+            val x = column * 8 + bit
+            if (x < bmp.width) {
+                val color = bmp.getPixel(x, y)
+                val gray = (Color.red(color)*299 + Color.green(color)*587 + Color.blue(color)*114)/1000
+                if (Color.alpha(color) >= 100 && gray < 190) value = value or (1 shl (7-bit))
+            }
+        }
+        out.write(value)
+    }
+    bmp.recycle()
+    if (bmp !== src) src.recycle()
     return out.toByteArray()
 }
 
-private fun writeHeader(p:CompanyProfile,o:ByteArrayOutputStream,time:Long){fun w(s:String){o.write(s.toByteArray(Charsets.UTF_8))};fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())};c(0x1B,0x40,0x1B,0x61,1);if(p.saleLogoEnabled&&p.logoPath.isNotBlank())logo(p.logoPath)?.let{o.write(it);w("\n")};c(0x1B,0x45,1,0x1D,0x21,0x11);w(fit(p.name.ifBlank{"VOICE POS"},W)+"\n");c(0x1D,0x21,0,0x1B,0x45,0);if(p.phone.isNotBlank())w(fit(p.phone,W)+"\n");p.address.split("\n").filter{it.isNotBlank()}.forEach{line->val addressLine=fit(line,W);if(containsUrdu(addressLine))o.write(ReceiptImage.escPosLine(addressLine))else w(addressLine+"\n")};w(SEP+"\n");w(pair("Date",date(time))+"\n")}
+private fun writeHeader(p: CompanyProfile, out: ByteArrayOutputStream, time: Long, paperWidthMm: Int) {
+    val layout = ReceiptPaperWidth.fromMillimeters(paperWidthMm)
+    fun w(s: String) { out.write(s.toByteArray(Charsets.UTF_8)) }
+    fun c(vararg x: Int) { out.write(x.map { (it and 255).toByte() }.toByteArray()) }
+    c(0x1B,0x40,0x1B,0x61,1)
+    if (p.saleLogoEnabled && p.logoPath.isNotBlank()) logo(p.logoPath,paperWidthMm)?.let { out.write(it); w("\n") }
+    c(0x1B,0x45,1,0x1D,0x21,0x11)
+    w(ReceiptLayout.fit(p.name.ifBlank { "VOICE POS" },layout.columns)+"\n")
+    c(0x1D,0x21,0,0x1B,0x45,0)
+    if (p.phone.isNotBlank()) w(ReceiptLayout.fit(p.phone,layout.columns)+"\n")
+    p.address.split("\n").filter { it.isNotBlank() }.forEach { line ->
+        val address = ReceiptLayout.fit(line,layout.columns)
+        if (containsUrdu(address)) out.write(ReceiptImage.escPosLine(address,layout.rasterDots)) else w(address+"\n")
+    }
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    w(ReceiptLayout.pair("Date",date(time),paperWidthMm)+"\n")
+}
 
-private fun writeKitchenHeader(o:ByteArrayOutputStream,s:PendingSale){fun w(x:String){o.write(x.toByteArray(Charsets.UTF_8))};fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())};c(0x1B,0x40,0x1B,0x61,1,0x1B,0x45,1,0x1D,0x21,0x11);w("KITCHEN ORDER\n");c(0x1D,0x21,0,0x1B,0x45,0);w(pair("ORDER #",s.id.toString())+"\n");c(0x1B,0x45,1);w("*** "+s.orderType.replace('_',' ').uppercase(Locale.US)+" ***\n");c(0x1B,0x45,0);w(pair("TIME",date(s.time))+"\n");if(s.shiftPerson.isNotBlank())w(pair("SHIFT PERSON",s.shiftPerson)+"\n");w(SEP+"\n")}
+private fun writeKitchenHeader(out: ByteArrayOutputStream, sale: PendingSale, paperWidthMm: Int) {
+    fun w(s: String) { out.write(s.toByteArray(Charsets.UTF_8)) }
+    fun c(vararg x: Int) { out.write(x.map { (it and 255).toByte() }.toByteArray()) }
+    c(0x1B,0x40,0x1B,0x61,1,0x1B,0x45,1,0x1D,0x21,0x11)
+    w("KITCHEN ORDER\n")
+    c(0x1D,0x21,0,0x1B,0x45,0)
+    w(ReceiptLayout.pair("ORDER #",sale.id.toString(),paperWidthMm)+"\n")
+    c(0x1B,0x45,1)
+    w("*** "+ReceiptLayout.fit(sale.orderType.replace('_',' ').uppercase(Locale.US),ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns)+" ***\n")
+    c(0x1B,0x45,0)
+    w(ReceiptLayout.pair("TIME",date(sale.time),paperWidthMm)+"\n")
+    if (sale.shiftPerson.isNotBlank()) w(ReceiptLayout.pair("SHIFT PERSON",sale.shiftPerson,paperWidthMm)+"\n")
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+}
 
-private fun escpos(p:CompanyProfile,title:String,items:List<SaleItem>,total:Double,theme:ReceiptTheme,customerName:String="",customerPhone:String="",time:Long=System.currentTimeMillis(),orderType:String="DINE_IN",customerAddress:String="",paymentMethod:String="",paidAmount:Double=total,dueAmount:Double=0.0,shiftPerson:String=""):ByteArray{val o=ByteArrayOutputStream();fun w(s:String){o.write(s.toByteArray(Charsets.UTF_8))};fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())};val productItems=items.filterNot(::isDiscountItem);val subtotal=productItems.sumOf{it.total};val discount=cartDiscount(items).coerceAtMost(subtotal);val net=(subtotal-discount).coerceAtLeast(0.0);val service=if(p.serviceChargeEnabled)net*p.serviceChargeRate/100.0 else 0.0;val taxBase=net+service;val tax=if(p.taxEnabled)taxBase*p.taxRate/100.0 else 0.0;writeHeader(p,o,time);c(0x1B,0x45,1);w(fit(title,W)+"\n");c(0x1B,0x45,0);w(pair("Order Type",orderType.replace('_',' '))+"\n");if(shiftPerson.isNotBlank())w(pair("Served by",shiftPerson)+"\n");if(customerName.isNotBlank()||customerPhone.isNotBlank()||customerAddress.isNotBlank()){w(SEP+"\n");if(customerName.isNotBlank()||customerPhone.isNotBlank()){val customerLine=pair(customerName.ifBlank{"Customer"},customerPhone);if(containsUrdu(customerLine))o.write(ReceiptImage.escPosLine(customerLine))else w(customerLine+"\n")};if(customerAddress.isNotBlank()){val addressLine="Address: "+fit(customerAddress,W-9);if(containsUrdu(addressLine))o.write(ReceiptImage.escPosLine(addressLine))else w(addressLine+"\n")}};w(SEP+"\n");w(cols("ITEM","QTY","PRICE")+"\n");w(SEP+"\n");productItems.forEach{w(cols(it.name,it.qty.toString(),money(it.total))+"\n")};w(SEP+"\n");w(pair("Bill",money(subtotal))+"\n");if(discount>0)w(pair(items.filter(::isDiscountItem).joinToString(" / "){discountLabel(it)}.ifBlank{"Discount"},"- "+money(discount))+"\n");if(p.serviceChargeEnabled&&service>0)w(pair(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(service))+"\n");if(p.taxEnabled&&tax>0)w(pair(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(tax))+"\n");c(0x1B,0x45,1);w(pair("TOTAL BILL",money(total))+"\n");c(0x1B,0x45,0);if(paymentMethod.isNotBlank())w(pair("Paid via",paymentMethod)+"\n");if(dueAmount>0.005){w(pair("Paid",money(paidAmount))+"\n");w(pair("BALANCE DUE",money(dueAmount))+"\n")};w(SEP+"\n");if(p.footer.isNotBlank()){c(0x1B,0x61,1);w(fit(p.footer,W)+"\n")};w("\n\n\n");return o.toByteArray()}
-fun customerReceipt(s:Sale,p:CompanyProfile,t:ReceiptTheme,shiftPerson:String="")=escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone,s.time,s.orderType,s.customerAddress,s.paymentMethod,s.paidAmount,s.dueAmount,shiftPerson)
-fun expenseReceipt(e:Expense,p:CompanyProfile,t:ReceiptTheme):ByteArray{val o=ByteArrayOutputStream();fun w(s:String){o.write(s.toByteArray(Charsets.UTF_8))};fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())};writeHeader(p,o,e.time);c(0x1B,0x45,1);w("EXPENSE #${e.id}\n");c(0x1B,0x45,0);w(SEP+"\n");w(pair("Description",e.title)+"\n");w(pair("Category",e.category)+"\n");w(pair("Paid via",e.paymentMethod)+"\n");w(SEP+"\n");c(0x1B,0x45,1);w(pair("AMOUNT",money(e.amount))+"\n");c(0x1B,0x45,0);w(SEP+"\n");if(p.footer.isNotBlank())w(fit(p.footer,W)+"\n");w("\n\n\n");return o.toByteArray()}
-fun kitchenReceipt(s:PendingSale,p:CompanyProfile,t:ReceiptTheme):ByteArray{val o=ByteArrayOutputStream();fun w(x:String){o.write(x.toByteArray(Charsets.UTF_8))};fun c(vararg x:Int){o.write(x.map{(it and 255).toByte()}.toByteArray())};writeKitchenHeader(o,s);c(0x1B,0x45,1,0x1D,0x21,0x22);w("ORDER ITEMS\n");c(0x1D,0x21,0,0x1B,0x45,0);w(SEP+"\n");s.items.filterNot(::isDiscountItem).forEach{c(0x1B,0x45,1,0x1D,0x21,0x11);w(fit("${it.qty} x ${it.name}",W)+"\n");c(0x1D,0x21,0,0x1B,0x45,0)};w(SEP+"\n");c(0x1B,0x45,1);when(s.orderType.uppercase(Locale.US)){"DELIVERY"->w("*** DELIVERY — RIDER COPY ***\n");"TAKEAWAY"->w("*** TAKEAWAY — PICKUP ***\n");else->w("*** DINE-IN — TABLE SERVICE ***\n")};c(0x1B,0x45,0);w("\n\n\n");return o.toByteArray()}
+private fun escpos(
+    p: CompanyProfile, title: String, items: List<SaleItem>, total: Double, theme: ReceiptTheme,
+    customerName: String = "", customerPhone: String = "", time: Long = System.currentTimeMillis(),
+    orderType: String = "DINE_IN", customerAddress: String = "", paymentMethod: String = "",
+    paidAmount: Double = total, dueAmount: Double = 0.0, shiftPerson: String = "", paperWidthMm: Int = 58
+): ByteArray {
+    val out = ByteArrayOutputStream()
+    val layout = ReceiptPaperWidth.fromMillimeters(paperWidthMm)
+    fun w(s: String) { out.write(s.toByteArray(Charsets.UTF_8)) }
+    fun c(vararg x: Int) { out.write(x.map { (it and 255).toByte() }.toByteArray()) }
+    val productItems = items.filterNot(::isDiscountItem)
+    val subtotal = productItems.sumOf { it.total }
+    val discount = cartDiscount(items).coerceAtMost(subtotal)
+    val net = (subtotal-discount).coerceAtLeast(0.0)
+    val breakdown = MoneyMath.calculate(net,p.serviceChargeRate,p.taxRate,p.serviceChargeEnabled,p.taxEnabled,p.currencyCode)
+    writeHeader(p,out,time,paperWidthMm)
+    c(0x1B,0x45,1); w(ReceiptLayout.fit(title,layout.columns)+"\n"); c(0x1B,0x45,0)
+    w(ReceiptLayout.pair("Order Type",orderType.replace('_',' '),paperWidthMm)+"\n")
+    if (shiftPerson.isNotBlank()) w(ReceiptLayout.pair("Served by",shiftPerson,paperWidthMm)+"\n")
+    if (customerName.isNotBlank() || customerPhone.isNotBlank() || customerAddress.isNotBlank()) {
+        w(ReceiptLayout.separator(paperWidthMm)+"\n")
+        if (customerName.isNotBlank() || customerPhone.isNotBlank()) {
+            val line=ReceiptLayout.pair(customerName.ifBlank{"Customer"},customerPhone,paperWidthMm)
+            if (containsUrdu(line)) out.write(ReceiptImage.escPosLine(line,layout.rasterDots)) else w(line+"\n")
+        }
+        if (customerAddress.isNotBlank()) {
+            val address="Address: "+ReceiptLayout.fit(customerAddress,(layout.columns-9).coerceAtLeast(0))
+            if (containsUrdu(address)) out.write(ReceiptImage.escPosLine(address,layout.rasterDots)) else w(address+"\n")
+        }
+    }
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    w(ReceiptLayout.itemRow("ITEM","QTY","PRICE",paperWidthMm)+"\n")
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    productItems.forEach { w(ReceiptLayout.itemRow(it.name,it.qty.toString(),money(it.total),paperWidthMm)+"\n") }
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    w(ReceiptLayout.pair("Bill",money(subtotal),paperWidthMm)+"\n")
+    if (discount>0) {
+        val label=items.filter(::isDiscountItem).joinToString(" / "){discountLabel(it)}.ifBlank{"Discount"}
+        w(ReceiptLayout.pair(label,"- "+money(discount),paperWidthMm)+"\n")
+    }
+    if (p.serviceChargeEnabled && breakdown.serviceCharge>0) w(ReceiptLayout.pair(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(breakdown.serviceCharge),paperWidthMm)+"\n")
+    if (p.taxEnabled && breakdown.tax>0) w(ReceiptLayout.pair(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(breakdown.tax),paperWidthMm)+"\n")
+    c(0x1B,0x45,1); w(ReceiptLayout.pair("TOTAL BILL",money(total),paperWidthMm)+"\n"); c(0x1B,0x45,0)
+    if (paymentMethod.isNotBlank()) w(ReceiptLayout.pair("Paid via",paymentMethod,paperWidthMm)+"\n")
+    if (dueAmount>0.005) { w(ReceiptLayout.pair("Paid",money(paidAmount),paperWidthMm)+"\n"); w(ReceiptLayout.pair("BALANCE DUE",money(dueAmount),paperWidthMm)+"\n") }
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    if (p.footer.isNotBlank()) { c(0x1B,0x61,1); w(ReceiptLayout.fit(p.footer,layout.columns)+"\n") }
+    w("\n\n\n")
+    return out.toByteArray()
+}
+
+fun customerReceipt(s: Sale, p: CompanyProfile, t: ReceiptTheme, shiftPerson: String = "", paperWidthMm: Int = 58) =
+    escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone,s.time,s.orderType,s.customerAddress,s.paymentMethod,s.paidAmount,s.dueAmount,shiftPerson,paperWidthMm)
+
+fun expenseReceipt(e: Expense, p: CompanyProfile, t: ReceiptTheme, paperWidthMm: Int = 58): ByteArray {
+    val out=ByteArrayOutputStream()
+    fun w(s:String){out.write(s.toByteArray(Charsets.UTF_8))}
+    fun c(vararg x:Int){out.write(x.map{(it and 255).toByte()}.toByteArray())}
+    writeHeader(p,out,e.time,paperWidthMm)
+    c(0x1B,0x45,1);w("EXPENSE #${e.id}\n");c(0x1B,0x45,0)
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    w(ReceiptLayout.pair("Description",e.title,paperWidthMm)+"\n")
+    w(ReceiptLayout.pair("Category",e.category,paperWidthMm)+"\n")
+    w(ReceiptLayout.pair("Paid via",e.paymentMethod,paperWidthMm)+"\n")
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    c(0x1B,0x45,1);w(ReceiptLayout.pair("AMOUNT",money(e.amount),paperWidthMm)+"\n");c(0x1B,0x45,0)
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    if(p.footer.isNotBlank())w(ReceiptLayout.fit(p.footer,ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns)+"\n")
+    w("\n\n\n")
+    return out.toByteArray()
+}
+
+fun kitchenReceipt(s: PendingSale, p: CompanyProfile, t: ReceiptTheme, paperWidthMm: Int = 58): ByteArray {
+    val out=ByteArrayOutputStream()
+    fun w(x:String){out.write(x.toByteArray(Charsets.UTF_8))}
+    fun c(vararg x:Int){out.write(x.map{(it and 255).toByte()}.toByteArray())}
+    val width=ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns
+    writeKitchenHeader(out,s,paperWidthMm)
+    c(0x1B,0x45,1,0x1D,0x21,0x22);w("ORDER ITEMS\n");c(0x1D,0x21,0,0x1B,0x45,0)
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    s.items.filterNot(::isDiscountItem).forEach {
+        c(0x1B,0x45,1,0x1D,0x21,0x11);w(ReceiptLayout.fit("${it.qty} x ${it.name}",width)+"\n");c(0x1D,0x21,0,0x1B,0x45,0)
+    }
+    w(ReceiptLayout.separator(paperWidthMm)+"\n")
+    c(0x1B,0x45,1)
+    val route=when(s.orderType.uppercase(Locale.US)){"DELIVERY"->"*** DELIVERY - RIDER COPY ***";"TAKEAWAY"->"*** TAKEAWAY - PICKUP ***";else->"*** DINE-IN - TABLE SERVICE ***"}
+    w(ReceiptLayout.fit(route,width)+"\n");c(0x1B,0x45,0);w("\n\n\n")
+    return out.toByteArray()
+}
+
 fun startDay():Long=Calendar.getInstance().apply{set(Calendar.HOUR_OF_DAY,0);set(Calendar.MINUTE,0);set(Calendar.SECOND,0);set(Calendar.MILLISECOND,0)}.timeInMillis
 fun inRange(t:Long,f:Int):Boolean{val since=when(f){0->startDay();1->System.currentTimeMillis()-7*86400000L;2->System.currentTimeMillis()-30*86400000L;else->0L};return t>=since}

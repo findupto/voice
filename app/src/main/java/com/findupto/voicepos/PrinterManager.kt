@@ -175,6 +175,8 @@ class PrinterManager(private val context: Context, private val store: Store) {
     private fun connectSocket(
         target: BluetoothDevice,
         current: () -> BluetoothSocket?,
+        other: () -> BluetoothSocket?,
+        otherAddress: () -> String,
         assign: (BluetoothSocket?) -> Unit,
         onConnected: (Boolean) -> Unit
     ) {
@@ -188,8 +190,15 @@ class PrinterManager(private val context: Context, private val store: Store) {
             var connected: BluetoothSocket? = null
             try {
                 if (hasScanPermission() && adapter?.isDiscovering == true) adapter.cancelDiscovery()
+                val shared = other()
+                if (shared != null && shared.isConnected && otherAddress() == target.address) {
+                    synchronized(socketLock) { assign(shared) }
+                    report("Shared connection: ${target.name.orEmpty().ifBlank { target.address }}")
+                    main.post { onConnected(true) }
+                    return@execute
+                }
                 val previous = current()
-                runCatching { previous?.close() }
+                if (previous != null && previous !== shared) runCatching { previous.close() }
                 connected = target.createRfcommSocketToServiceRecord(spp)
                 connected!!.connect()
                 synchronized(socketLock) { assign(connected) }
@@ -205,33 +214,51 @@ class PrinterManager(private val context: Context, private val store: Store) {
     }
 
     fun connectCustomer(d: BluetoothDevice) {
-        connectSocket(d, { customerSocket }, { customerSocket = it }) {
+        connectSocket(d, { customerSocket }, { kitchenSocket }, { store.kitchenPrinterAddress() }, { customerSocket = it }) {
             customerConnected = it
             if (it) {
                 store.setCustomerPrinterAddress(d.address)
+                if (store.kitchenPrinterAddress() == d.address) {
+                    synchronized(socketLock) { kitchenSocket = customerSocket }
+                    kitchenConnected = true
+                    drainPending(true)
+                }
                 drainPending(false)
             }
         }
     }
 
     fun connectKitchen(d: BluetoothDevice) {
-        connectSocket(d, { kitchenSocket }, { kitchenSocket = it }) {
+        connectSocket(d, { kitchenSocket }, { customerSocket }, { store.customerPrinterAddress() }, { kitchenSocket = it }) {
             kitchenConnected = it
             if (it) {
                 store.setKitchenPrinterAddress(d.address)
+                if (store.customerPrinterAddress() == d.address) {
+                    synchronized(socketLock) { customerSocket = kitchenSocket }
+                    customerConnected = true
+                    drainPending(false)
+                }
                 drainPending(true)
             }
         }
     }
 
     fun disconnectCustomer() {
-        synchronized(socketLock) { runCatching { customerSocket?.close() }; customerSocket = null }
+        synchronized(socketLock) {
+            val socket = customerSocket
+            customerSocket = null
+            if (socket != null && socket !== kitchenSocket) runCatching { socket.close() }
+        }
         customerConnected = false
         report("Receipt printer disconnected")
     }
 
     fun disconnectKitchen() {
-        synchronized(socketLock) { runCatching { kitchenSocket?.close() }; kitchenSocket = null }
+        synchronized(socketLock) {
+            val socket = kitchenSocket
+            kitchenSocket = null
+            if (socket != null && socket !== customerSocket) runCatching { socket.close() }
+        }
         kitchenConnected = false
         report("Kitchen printer disconnected")
     }
