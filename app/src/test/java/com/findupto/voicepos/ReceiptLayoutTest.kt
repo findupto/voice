@@ -60,6 +60,16 @@ class ReceiptLayoutTest {
         }
     }
 
+    @Test fun doubleWidthKitchenLinesFitBothPaperWidths() {
+        for (width in listOf(58, 80)) {
+            val columns = ReceiptPaperWidth.fromMillimeters(width).columns / 2
+            val lines = ReceiptLayout.wrap("1 x Chicken Cheese Burger Extra Large", columns)
+            assertTrue(lines.size > 1)
+            assertTrue(lines.all { it.length <= columns })
+            assertTrue(lines.joinToString(" ").contains("Extra Large"))
+        }
+    }
+
     @Test fun separatorsMatchPaperWidth() {
         assertEquals(32, ReceiptLayout.separator(58).length)
         assertEquals(48, ReceiptLayout.separator(80).length)
