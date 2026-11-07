@@ -34,7 +34,17 @@ class Store(private val context:Context){
   val editor=p.edit().putString("sales",(sales()+s).joinToString("\n"){"${it.id}~${ei(it.items)}~${it.total}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${it.paymentMethod}~${it.paidAmount}~${it.dueAmount}~${it.shiftId}~${it.serviceCharge}~${it.tax}"})
   if(s.paidAmount>0.0){val payment=PaymentRecord(newOrderId(),s.id,s.paidAmount,s.paymentMethod,now,s.shiftId);editor.putString("payments",(payments()+payment).joinToString("\n"){"${it.id}~${it.saleId}~${it.amount}~${it.method}~${it.time}~${it.shiftId}~${enc(it.note)}"})}
   if(s.dueAmount>0.0){val due=DueAccount(s.id,s.id,s.customerName,s.customerPhone,s.total,s.paidAmount,s.time);editor.putString("dues",(allDues()+due).joinToString("\n"){"${it.id}~${it.saleId}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.total}~${it.paid}~${it.createdAt}"})}
-  return editor.commit()
+  val remainingPending=pending().filterNot{it.id==s.id}
+  editor.putString("pending",remainingPending.joinToString("\n"){"${it.id}~${ei(it.items)}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${enc(it.shiftPerson)}~${enc(it.tableName)}~${enc(it.waiterName)}~${enc(it.counterName)}~${enc(it.chefName)}~${it.status}~${enc(it.specialInstructions)}~${it.updatedAt}~${it.servedAt}~${it.kitchenProgress.replace("~"," ")}"})
+  if(s.paymentMethod=="CASH"&&s.paidAmount>0.0)editor.putString("cash",(cash()+s.paidAmount).toString())
+  val oldAudit=orderAudit()
+  val audit=org.json.JSONArray()
+  for(i in (oldAudit.length()-4999).coerceAtLeast(0) until oldAudit.length())oldAudit.optJSONObject(i)?.let{audit.put(it)}
+  audit.put(org.json.JSONObject().put("eventId",java.util.UUID.randomUUID().toString()).put("orderId",s.id)
+   .put("actor",staffName()).put("role",staffRole()).put("action","BILLED").put("detail","sale:${s.id}").put("time",now))
+  editor.putString("order_audit",audit.toString())
+  val committed=editor.commit()
+  return committed||hasSale(s.id)
  }
  fun updateSale(s:Sale)=saveSales(sales().map{if(it.id==s.id)s else it})
  fun pending()=p.getString("pending","")!!.lines().filter{it.isNotBlank()}.mapNotNull{runCatching{val a=it.split("~");PendingSale(a[0].toLong(),di(a[1]),a[2].toLong(),dec(a.getOrNull(3).orEmpty()),dec(a.getOrNull(4).orEmpty()),a.getOrNull(5)?:"DINE_IN",dec(a.getOrNull(6).orEmpty()),dec(a.getOrNull(7).orEmpty()),dec(a.getOrNull(8).orEmpty()),dec(a.getOrNull(9).orEmpty()),dec(a.getOrNull(10).orEmpty()),dec(a.getOrNull(11).orEmpty()),a.getOrNull(12)?:"NEW",dec(a.getOrNull(13).orEmpty()),a.getOrNull(14)?.toLongOrNull()?:a[2].toLong(),a.getOrNull(15)?.toLongOrNull()?:0L,a.getOrNull(16)?: "{}")}.getOrNull()};private fun savePending(xs:List<PendingSale>)=p.edit().putString("pending",xs.joinToString("\n"){"${it.id}~${ei(it.items)}~${it.time}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.orderType}~${enc(it.customerAddress)}~${enc(it.shiftPerson)}~${enc(it.tableName)}~${enc(it.waiterName)}~${enc(it.counterName)}~${enc(it.chefName)}~${it.status}~${enc(it.specialInstructions)}~${it.updatedAt}~${it.servedAt}~${it.kitchenProgress.replace("~"," ")}"}).apply();fun addPending(s:PendingSale){if(pending().none{it.id==s.id}&&!hasSale(s.id))savePending(pending()+s)};fun replacePending(s:PendingSale)=savePending(pending().map{if(it.id==s.id)s else it});fun removePending(id:Long)=savePending(pending().filterNot{it.id==id})

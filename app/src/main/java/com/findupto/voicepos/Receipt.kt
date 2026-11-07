@@ -82,7 +82,8 @@ private fun escpos(
     p: CompanyProfile, title: String, items: List<SaleItem>, total: Double, theme: ReceiptTheme,
     customerName: String = "", customerPhone: String = "", time: Long = System.currentTimeMillis(),
     orderType: String = "DINE_IN", customerAddress: String = "", paymentMethod: String = "",
-    paidAmount: Double = total, dueAmount: Double = 0.0, shiftPerson: String = "", paperWidthMm: Int = 58
+    paidAmount: Double = total, dueAmount: Double = 0.0, shiftPerson: String = "", paperWidthMm: Int = 58,
+    storedServiceCharge: Double? = null, storedTax: Double? = null
 ): ByteArray {
     val out = ByteArrayOutputStream()
     val layout = ReceiptPaperWidth.fromMillimeters(paperWidthMm)
@@ -92,7 +93,12 @@ private fun escpos(
     val subtotal = productItems.sumOf { it.total }
     val discount = cartDiscount(items).coerceAtMost(subtotal)
     val net = (subtotal-discount).coerceAtLeast(0.0)
-    val breakdown = MoneyMath.calculate(net,p.serviceChargeRate,p.taxRate,p.serviceChargeEnabled,p.taxEnabled,p.currencyCode)
+    val calculated = MoneyMath.calculate(net,p.serviceChargeRate,p.taxRate,p.serviceChargeEnabled,p.taxEnabled,p.currencyCode)
+    val useStoredCharges = storedServiceCharge != null && storedTax != null &&
+        storedServiceCharge.isFinite() && storedTax.isFinite() && storedServiceCharge >= 0.0 && storedTax >= 0.0 &&
+        (storedServiceCharge > 0.0 || storedTax > 0.0 || total <= net + 0.005)
+    val serviceCharge = if (useStoredCharges) storedServiceCharge!! else calculated.serviceCharge
+    val taxAmount = if (useStoredCharges) storedTax!! else calculated.tax
     writeHeader(p,out,time,paperWidthMm)
     c(0x1B,0x45,1); w(ReceiptLayout.fit(title,layout.columns)+"\n"); c(0x1B,0x45,0)
     w(ReceiptLayout.pair("Order Type",orderType.replace('_',' '),paperWidthMm)+"\n")
@@ -118,8 +124,8 @@ private fun escpos(
         val label=items.filter(::isDiscountItem).joinToString(" / "){discountLabel(it)}.ifBlank{"Discount"}
         w(ReceiptLayout.pair(label,"- "+money(discount),paperWidthMm)+"\n")
     }
-    if (p.serviceChargeEnabled && breakdown.serviceCharge>0) w(ReceiptLayout.pair(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(breakdown.serviceCharge),paperWidthMm)+"\n")
-    if (p.taxEnabled && breakdown.tax>0) w(ReceiptLayout.pair(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(breakdown.tax),paperWidthMm)+"\n")
+    if (serviceCharge>0) w(ReceiptLayout.pair(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(serviceCharge),paperWidthMm)+"\n")
+    if (taxAmount>0) w(ReceiptLayout.pair(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(taxAmount),paperWidthMm)+"\n")
     c(0x1B,0x45,1); w(ReceiptLayout.pair("TOTAL BILL",money(total),paperWidthMm)+"\n"); c(0x1B,0x45,0)
     if (paymentMethod.isNotBlank()) w(ReceiptLayout.pair("Paid via",paymentMethod,paperWidthMm)+"\n")
     if (dueAmount>0.005) { w(ReceiptLayout.pair("Paid",money(paidAmount),paperWidthMm)+"\n"); w(ReceiptLayout.pair("BALANCE DUE",money(dueAmount),paperWidthMm)+"\n") }
@@ -130,7 +136,7 @@ private fun escpos(
 }
 
 fun customerReceipt(s: Sale, p: CompanyProfile, t: ReceiptTheme, shiftPerson: String = "", paperWidthMm: Int = 58) =
-    escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone,s.time,s.orderType,s.customerAddress,s.paymentMethod,s.paidAmount,s.dueAmount,shiftPerson,paperWidthMm)
+    escpos(p,"SALE #"+s.id,s.items,s.total,t,s.customerName,s.customerPhone,s.time,s.orderType,s.customerAddress,s.paymentMethod,s.paidAmount,s.dueAmount,shiftPerson,paperWidthMm,s.serviceCharge,s.tax)
 
 fun expenseReceipt(e: Expense, p: CompanyProfile, t: ReceiptTheme, paperWidthMm: Int = 58): ByteArray {
     val out=ByteArrayOutputStream()

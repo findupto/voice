@@ -16,6 +16,14 @@ object ReceiptLayout {
         .replace("•", "*").replace("“", "\"").replace("”", "\"").replace("’", "'")
         .trim().take(maxColumns.coerceAtLeast(0))
 
+    fun fitEnd(value: String, maxColumns: Int): String {
+        val clean = fit(value, Int.MAX_VALUE)
+        if (clean.length <= maxColumns) return clean
+        if (maxColumns <= 0) return ""
+        if (maxColumns == 1) return clean.takeLast(1)
+        return "…" + clean.takeLast(maxColumns - 1)
+    }
+
     fun separator(paperWidthMm: Int) =
         "-".repeat(ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns)
 
@@ -28,11 +36,12 @@ object ReceiptLayout {
 
     fun itemRow(name: String, quantity: String, price: String, paperWidthMm: Int): String {
         val width = ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns
-        val priceWidth = 11
         val quantityWidth = 6
-        val nameWidth = width - quantityWidth - priceWidth - 2
+        val priceText = fitEnd(price, (width - quantityWidth - 3).coerceAtLeast(1))
+        val priceWidth = priceText.length.coerceAtLeast(1)
+        val nameWidth = (width - quantityWidth - priceWidth - 2).coerceAtLeast(1)
         return fit(name, nameWidth).padEnd(nameWidth) + " " +
             fit(quantity, quantityWidth).padStart(quantityWidth) + " " +
-            fit(price, priceWidth).padStart(priceWidth)
+            priceText.padStart(priceWidth)
     }
 }
