@@ -191,7 +191,8 @@ class PrinterManager(private val context: Context, private val store: Store) {
             try {
                 if (hasScanPermission() && adapter?.isDiscovering == true) adapter.cancelDiscovery()
                 val shared = other()
-                if (shared != null && shared.isConnected && otherAddress() == target.address) {
+                if (shared != null && shared.isConnected && (otherAddress() == target.address ||
+                    runCatching { shared.remoteDevice.address == target.address }.getOrDefault(false))) {
                     synchronized(socketLock) { assign(shared) }
                     report("Shared connection: ${target.name.orEmpty().ifBlank { target.address }}")
                     main.post { onConnected(true) }

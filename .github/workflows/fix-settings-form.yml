@@ -4,7 +4,6 @@ on:
     branches: [main]
     paths:
       - 'app/src/main/java/com/findupto/voicepos/PosUiComponents.kt'
-      - '.github/workflows/fix-settings-form.yml'
 permissions:
   contents: write
 jobs:
@@ -21,8 +20,14 @@ jobs:
           import re
           p=Path('app/src/main/java/com/findupto/voicepos/PosUiComponents.kt')
           s=p.read_text()
-          start=s.index('@Composable\nfun ManualCartDialog')
-          end=s.index('@Composable\nfun MenuPage', start)
+          start_match=re.search(r'@Composable\s*fun ManualCartDialog\b', s)
+          if not start_match:
+              raise SystemExit('ManualCartDialog not found; nothing to normalize')
+          end_match=re.search(r'@Composable\s*fun MenuPage\b', s[start_match.end():])
+          if not end_match:
+              raise SystemExit('MenuPage boundary not found; refusing to rewrite file')
+          start=start_match.start()
+          end=start_match.end()+end_match.start()
           block='''@Composable
           fun ManualCartDialog(menu: List<MenuItem>, add: (MenuItem) -> Unit, addCustom: (String, Int, Double) -> Unit, close: () -> Unit) {
               var query by remember { mutableStateOf("") }
