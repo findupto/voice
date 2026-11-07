@@ -49,16 +49,21 @@ private fun writeHeader(p: CompanyProfile, out: ByteArrayOutputStream, time: Lon
     val layout = ReceiptPaperWidth.fromMillimeters(paperWidthMm)
     fun w(s: String) { out.write(s.toByteArray(Charsets.UTF_8)) }
     fun c(vararg x: Int) { out.write(x.map { (it and 255).toByte() }.toByteArray()) }
+    fun writeWrapped(text: String, columns: Int = layout.columns) {
+        if (containsUrdu(text)) {
+            out.write(ReceiptImage.escPosLine(text, layout.rasterDots))
+            w("\n")
+        } else {
+            ReceiptLayout.wrap(text, columns).forEach { w(it + "\n") }
+        }
+    }
     c(0x1B,0x40,0x1B,0x61,1)
     if (p.saleLogoEnabled && p.logoPath.isNotBlank()) logo(p.logoPath,paperWidthMm)?.let { out.write(it); w("\n") }
     c(0x1B,0x45,1,0x1D,0x21,0x11)
-    w(ReceiptLayout.fit(p.name.ifBlank { "VOICE POS" },layout.columns)+"\n")
+    writeWrapped(p.name.ifBlank { "VOICE POS" }, (layout.columns / 2).coerceAtLeast(1))
     c(0x1D,0x21,0,0x1B,0x45,0)
-    if (p.phone.isNotBlank()) w(ReceiptLayout.fit(p.phone,layout.columns)+"\n")
-    p.address.split("\n").filter { it.isNotBlank() }.forEach { line ->
-        val address = ReceiptLayout.fit(line,layout.columns)
-        if (containsUrdu(address)) out.write(ReceiptImage.escPosLine(address,layout.rasterDots)) else w(address+"\n")
-    }
+    if (p.phone.isNotBlank()) writeWrapped(p.phone)
+    p.address.split("\n").filter { it.isNotBlank() }.forEach { line -> writeWrapped(line) }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     w(ReceiptLayout.pair("Date",date(time),paperWidthMm)+"\n")
 }
@@ -74,7 +79,7 @@ private fun writeKitchenHeader(out: ByteArrayOutputStream, sale: PendingSale, pa
     w("*** "+ReceiptLayout.fit(sale.orderType.replace('_',' ').uppercase(Locale.US),ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns)+" ***\n")
     c(0x1B,0x45,0)
     w(ReceiptLayout.pair("TIME",date(sale.time),paperWidthMm)+"\n")
-    if (sale.shiftPerson.isNotBlank()) w(ReceiptLayout.pair("SHIFT PERSON",sale.shiftPerson,paperWidthMm)+"\n")
+    if (sale.shiftPerson.isNotBlank()) ReceiptLayout.pairRows("SHIFT PERSON",sale.shiftPerson,paperWidthMm).forEach { w(it+"\n") }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
 }
 
@@ -89,6 +94,14 @@ private fun escpos(
     val layout = ReceiptPaperWidth.fromMillimeters(paperWidthMm)
     fun w(s: String) { out.write(s.toByteArray(Charsets.UTF_8)) }
     fun c(vararg x: Int) { out.write(x.map { (it and 255).toByte() }.toByteArray()) }
+    fun writeWrapped(text: String) {
+        if (containsUrdu(text)) {
+            out.write(ReceiptImage.escPosLine(text, layout.rasterDots))
+            w("\n")
+        } else {
+            ReceiptLayout.wrap(text, layout.columns).forEach { w(it + "\n") }
+        }
+    }
     val productItems = items.filterNot(::isDiscountItem)
     val subtotal = productItems.sumOf { it.total }
     val discount = cartDiscount(items).coerceAtMost(subtotal)
@@ -100,19 +113,15 @@ private fun escpos(
     val serviceCharge = if (useStoredCharges) storedServiceCharge!! else calculated.serviceCharge
     val taxAmount = if (useStoredCharges) storedTax!! else calculated.tax
     writeHeader(p,out,time,paperWidthMm)
-    c(0x1B,0x45,1); w(ReceiptLayout.fit(title,layout.columns)+"\n"); c(0x1B,0x45,0)
+    c(0x1B,0x45,1); writeWrapped(title); c(0x1B,0x45,0)
     w(ReceiptLayout.pair("Order Type",orderType.replace('_',' '),paperWidthMm)+"\n")
-    if (shiftPerson.isNotBlank()) w(ReceiptLayout.pair("Served by",shiftPerson,paperWidthMm)+"\n")
+    if (shiftPerson.isNotBlank()) ReceiptLayout.pairRows("Served by",shiftPerson,paperWidthMm).forEach { writeWrapped(it) }
     if (customerName.isNotBlank() || customerPhone.isNotBlank() || customerAddress.isNotBlank()) {
         w(ReceiptLayout.separator(paperWidthMm)+"\n")
         if (customerName.isNotBlank() || customerPhone.isNotBlank()) {
-            val line=ReceiptLayout.pair(customerName.ifBlank{"Customer"},customerPhone,paperWidthMm)
-            if (containsUrdu(line)) out.write(ReceiptImage.escPosLine(line,layout.rasterDots)) else w(line+"\n")
+            ReceiptLayout.pairRows(customerName.ifBlank{"Customer"},customerPhone,paperWidthMm).forEach { writeWrapped(it) }
         }
-        if (customerAddress.isNotBlank()) {
-            val address="Address: "+ReceiptLayout.fit(customerAddress,(layout.columns-9).coerceAtLeast(0))
-            if (containsUrdu(address)) out.write(ReceiptImage.escPosLine(address,layout.rasterDots)) else w(address+"\n")
-        }
+        if (customerAddress.isNotBlank()) writeWrapped("Address: $customerAddress")
     }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     w(ReceiptLayout.itemRow("ITEM","QTY","PRICE",paperWidthMm)+"\n")
@@ -124,15 +133,15 @@ private fun escpos(
     w(ReceiptLayout.pair("Bill",money(subtotal),paperWidthMm)+"\n")
     if (discount>0) {
         val label=items.filter(::isDiscountItem).joinToString(" / "){discountLabel(it)}.ifBlank{"Discount"}
-        w(ReceiptLayout.pair(label,"- "+money(discount),paperWidthMm)+"\n")
+        ReceiptLayout.pairRows(label,"- "+money(discount),paperWidthMm).forEach { writeWrapped(it) }
     }
-    if (serviceCharge>0) w(ReceiptLayout.pair(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(serviceCharge),paperWidthMm)+"\n")
-    if (taxAmount>0) w(ReceiptLayout.pair(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(taxAmount),paperWidthMm)+"\n")
+    if (serviceCharge>0) ReceiptLayout.pairRows(p.serviceChargeLabel.ifBlank{"Service Charge"}+" ${p.serviceChargeRate}%",money(serviceCharge),paperWidthMm).forEach { writeWrapped(it) }
+    if (taxAmount>0) ReceiptLayout.pairRows(p.taxLabel.ifBlank{"Tax"}+" ${p.taxRate}%",money(taxAmount),paperWidthMm).forEach { writeWrapped(it) }
     c(0x1B,0x45,1); w(ReceiptLayout.pair("TOTAL BILL",money(total),paperWidthMm)+"\n"); c(0x1B,0x45,0)
     if (paymentMethod.isNotBlank()) w(ReceiptLayout.pair("Paid via",paymentMethod,paperWidthMm)+"\n")
     if (dueAmount>0.005) { w(ReceiptLayout.pair("Paid",money(paidAmount),paperWidthMm)+"\n"); w(ReceiptLayout.pair("BALANCE DUE",money(dueAmount),paperWidthMm)+"\n") }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
-    if (p.footer.isNotBlank()) { c(0x1B,0x61,1); w(ReceiptLayout.fit(p.footer,layout.columns)+"\n") }
+    if (p.footer.isNotBlank()) { c(0x1B,0x61,1); writeWrapped(p.footer) }
     w("\n\n\n")
     return out.toByteArray()
 }
@@ -147,13 +156,13 @@ fun expenseReceipt(e: Expense, p: CompanyProfile, t: ReceiptTheme, paperWidthMm:
     writeHeader(p,out,e.time,paperWidthMm)
     c(0x1B,0x45,1);w("EXPENSE #${e.id}\n");c(0x1B,0x45,0)
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
-    w(ReceiptLayout.pair("Description",e.title,paperWidthMm)+"\n")
-    w(ReceiptLayout.pair("Category",e.category,paperWidthMm)+"\n")
-    w(ReceiptLayout.pair("Paid via",e.paymentMethod,paperWidthMm)+"\n")
+    ReceiptLayout.pairRows("Description",e.title,paperWidthMm).forEach { w(it+"\n") }
+    ReceiptLayout.pairRows("Category",e.category,paperWidthMm).forEach { w(it+"\n") }
+    ReceiptLayout.pairRows("Paid via",e.paymentMethod,paperWidthMm).forEach { w(it+"\n") }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     c(0x1B,0x45,1);w(ReceiptLayout.pair("AMOUNT",money(e.amount),paperWidthMm)+"\n");c(0x1B,0x45,0)
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
-    if(p.footer.isNotBlank())w(ReceiptLayout.fit(p.footer,ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns)+"\n")
+    if(p.footer.isNotBlank())ReceiptLayout.wrap(p.footer,ReceiptPaperWidth.fromMillimeters(paperWidthMm).columns).forEach{w(it+"\n")}
     w("\n\n\n")
     return out.toByteArray()
 }
