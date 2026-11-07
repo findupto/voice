@@ -28,6 +28,13 @@ class ReceiptLayoutTest {
         assertTrue(row.endsWith("Rs 12,345,678"))
     }
 
+    @Test fun longProductNamesWrapWithoutLosingText() {
+        val rows = ReceiptLayout.itemRows("Chicken Cheese Burger Extra Large", "1", "Rs 350", 58)
+        assertTrue(rows.size > 1)
+        assertTrue(rows.all { it.length == 32 })
+        assertTrue(rows.joinToString(" ").contains("Burger"))
+    }
+
     @Test fun separatorsMatchPaperWidth() {
         assertEquals(32, ReceiptLayout.separator(58).length)
         assertEquals(48, ReceiptLayout.separator(80).length)

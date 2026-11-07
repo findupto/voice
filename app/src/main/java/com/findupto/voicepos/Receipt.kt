@@ -117,7 +117,9 @@ private fun escpos(
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     w(ReceiptLayout.itemRow("ITEM","QTY","PRICE",paperWidthMm)+"\n")
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
-    productItems.forEach { w(ReceiptLayout.itemRow(it.name,it.qty.toString(),money(it.total),paperWidthMm)+"\n") }
+    productItems.forEach { item ->
+        ReceiptLayout.itemRows(item.name,item.qty.toString(),money(item.total),paperWidthMm).forEach { w(it+"\n") }
+    }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     w(ReceiptLayout.pair("Bill",money(subtotal),paperWidthMm)+"\n")
     if (discount>0) {
@@ -164,8 +166,10 @@ fun kitchenReceipt(s: PendingSale, p: CompanyProfile, t: ReceiptTheme, paperWidt
     writeKitchenHeader(out,s,paperWidthMm)
     c(0x1B,0x45,1,0x1D,0x21,0x22);w("ORDER ITEMS\n");c(0x1D,0x21,0,0x1B,0x45,0)
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
-    s.items.filterNot(::isDiscountItem).forEach {
-        c(0x1B,0x45,1,0x1D,0x21,0x11);w(ReceiptLayout.fit("${it.qty} x ${it.name}",width)+"\n");c(0x1D,0x21,0,0x1B,0x45,0)
+    s.items.filterNot(::isDiscountItem).forEach { item ->
+        ReceiptLayout.wrap("${item.qty} x ${item.name}",width).forEach { line ->
+            c(0x1B,0x45,1,0x1D,0x21,0x11);w(line+"\n");c(0x1D,0x21,0,0x1B,0x45,0)
+        }
     }
     w(ReceiptLayout.separator(paperWidthMm)+"\n")
     c(0x1B,0x45,1)
