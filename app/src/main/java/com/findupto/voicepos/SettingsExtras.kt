@@ -70,7 +70,8 @@ import androidx.compose.ui.unit.dp
                     TextButton(onClick={printer.disconnectCustomer()},Modifier.weight(1f),enabled=printer.customerConnected){Text("DISCONNECT RECEIPT")}
                     TextButton(onClick={printer.disconnectKitchen()},Modifier.weight(1f),enabled=printer.kitchenConnected){Text("DISCONNECT KITCHEN")}
                 }
-                Text("Offline jobs are saved and retry after reconnect. A live print failure may be partial; check the paper before using RE-PRINT to avoid duplicates.",style=MaterialTheme.typography.bodySmall)
+                Text("Waiting to send: Receipt ${printer.pendingCustomerCount} • Kitchen ${printer.pendingKitchenCount}",style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold)
+                Text("Offline jobs are saved for their selected printer and retry after reconnect. A live failure may be partial; check the paper before using RE-PRINT to avoid duplicates.",style=MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton={TextButton(onClick=close){Text("DONE")}}
