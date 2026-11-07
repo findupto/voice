@@ -87,6 +87,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
             context.registerReceiver(receiver, f, Context.RECEIVER_EXPORTED)
         else @Suppress("DEPRECATION") context.registerReceiver(receiver, f)
         refresh()
+        recoverInterruptedPrints()
         refreshPendingCounts()
         main.postDelayed({ reconnectSaved() }, 700)
     }
@@ -419,6 +420,63 @@ class PrinterManager(private val context: Context, private val store: Store) {
         }
     }
 
+    /** A process death during a send leaves an in-flight job for manual paper review. */
+    private fun recoverInterruptedPrints() {
+        val recovered = synchronized(pendingLock) {
+            val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+            var changed = false
+            for (i in 0 until jobs.length()) {
+                val item = jobs.optJSONObject(i) ?: continue
+                if (item.optBoolean("inFlight", false)) {
+                    item.put("inFlight", false)
+                    item.put("needsReview", true)
+                    changed = true
+                }
+            }
+            !changed || pendingPrefs.edit().putString("jobs", jobs.toString()).commit()
+        }
+        if (recovered && runCatching {
+                val jobs = JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]")
+                (0 until jobs.length()).any { jobs.optJSONObject(it)?.optBoolean("needsReview", false) == true }
+            }.getOrDefault(false)) {
+            report("An interrupted print needs a paper check before re-printing.")
+        }
+    }
+
+    private fun markPendingInFlight(jobId: String): Boolean {
+        val saved = synchronized(pendingLock) {
+            val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+            var foundJob = false
+            for (i in 0 until jobs.length()) {
+                val item = jobs.optJSONObject(i) ?: continue
+                if (item.optString("id") == jobId) {
+                    item.put("inFlight", true)
+                    foundJob = true
+                    break
+                }
+            }
+            foundJob && pendingPrefs.edit().putString("jobs", jobs.toString()).commit()
+        }
+        return saved
+    }
+
+    private fun clearPendingInFlight(jobId: String): Boolean {
+        val saved = synchronized(pendingLock) {
+            val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+            var foundJob = false
+            for (i in 0 until jobs.length()) {
+                val item = jobs.optJSONObject(i) ?: continue
+                if (item.optString("id") == jobId) {
+                    item.put("inFlight", false)
+                    foundJob = true
+                    break
+                }
+            }
+            foundJob && pendingPrefs.edit().putString("jobs", jobs.toString()).commit()
+        }
+        return saved
+    }
+
     private fun markPendingForReview(jobId: String): Boolean {
         val saved = synchronized(pendingLock) {
             val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
@@ -428,6 +486,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
                 val item = jobs.optJSONObject(i) ?: continue
                 if (item.optString("id") == jobId) {
                     item.put("needsReview", true)
+                    item.put("inFlight", false)
                     foundJob = true
                 }
                 updated.put(item)
@@ -467,6 +526,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
                         runCatching { jobs.getJSONObject(i) }.getOrNull()?.takeIf {
                             it.optBoolean("kitchen") == kitchen &&
                                 !it.optBoolean("needsReview", false) &&
+                                !it.optBoolean("inFlight", false) &&
                                 (it.optString("address").isBlank() || it.optString("address") == targetAddress)
                         }
                     }
@@ -476,6 +536,10 @@ class PrinterManager(private val context: Context, private val store: Store) {
                 var usedSocket: BluetoothSocket? = null
                 var writeAttempted = false
                 try {
+                    if (!markPendingInFlight(job.optString("id"))) {
+                        report("Could not save print send state; job was not sent.", true)
+                        break
+                    }
                     val payload = Base64.decode(job.getString("payload"), Base64.DEFAULT)
                     synchronized(socketLock) {
                         val active = if (kitchen) kitchenSocket else customerSocket
@@ -516,7 +580,12 @@ class PrinterManager(private val context: Context, private val store: Store) {
                             true
                         )
                     } else {
-                        report("Queued print was not sent; job retained for the next reconnect.", true)
+                        val reset = clearPendingInFlight(job.optString("id"))
+                        report(
+                            if (reset) "Queued print was not sent; job retained for the next reconnect."
+                            else "Print send state could not be reset. Check paper before retrying.",
+                            true
+                        )
                     }
                     break
                 }
