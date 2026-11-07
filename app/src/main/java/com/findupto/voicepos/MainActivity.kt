@@ -30,7 +30,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: Store
     private lateinit var printer: PrinterManager
     private val scanStatus=mutableStateOf(""); private val scannedDiscountCode=mutableStateOf("")
-    private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.refresh() }
+    private val bluetoothPermissionLauncher=registerForActivityResult(RequestMultiplePermissions()){ grants -> if(grants.values.any{it}) printer.reconnectSavedPrinters() }
     private val notificationPermissionLauncher=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){ startOrderAlerts(); requestFeaturePermissions() }
     private val logoVersion=mutableStateOf(0)
     private val exportMenuLauncher=registerForActivityResult(CreateDocument("text/csv")){uri->uri?.let{writeMenuCsv(it)}}
@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::printer.isInitialized) printer.reconnectSavedPrinters()
         // Schedule only after notification permission is available; this also recovers after returning from Settings.
         if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             BusinessAutomation.schedule(this)
