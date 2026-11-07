@@ -448,7 +448,6 @@ class PrinterManager(private val context: Context, private val store: Store) {
         worker.shutdown()
         runCatching { context.unregisterReceiver(receiver) }
     }
-}
 
     companion object {
         private const val MAX_PENDING_JOBS = 500
