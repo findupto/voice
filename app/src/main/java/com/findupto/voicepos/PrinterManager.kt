@@ -53,6 +53,10 @@ class PrinterManager(private val context: Context, private val store: Store) {
         private set
     var pendingKitchenCount by mutableIntStateOf(0)
         private set
+    var pendingCustomerReviewCount by mutableIntStateOf(0)
+        private set
+    var pendingKitchenReviewCount by mutableIntStateOf(0)
+        private set
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
@@ -381,14 +385,61 @@ class PrinterManager(private val context: Context, private val store: Store) {
             val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
             var customer = 0
             var kitchen = 0
+            var customerReview = 0
+            var kitchenReview = 0
             for (i in 0 until jobs.length()) {
-                if (jobs.optJSONObject(i)?.optBoolean("kitchen") == true) kitchen++ else customer++
+                val job = jobs.optJSONObject(i) ?: continue
+                val review = job.optBoolean("needsReview", false)
+                if (job.optBoolean("kitchen")) {
+                    if (review) kitchenReview++ else kitchen++
+                } else {
+                    if (review) customerReview++ else customer++
+                }
             }
-            customer to kitchen
+            listOf(customer, kitchen, customerReview, kitchenReview)
         }
         main.post {
-            pendingCustomerCount = counts.first
-            pendingKitchenCount = counts.second
+            pendingCustomerCount = counts[0]
+            pendingKitchenCount = counts[1]
+            pendingCustomerReviewCount = counts[2]
+            pendingKitchenReviewCount = counts[3]
+        }
+    }
+
+    private fun markPendingForReview(jobId: String): Boolean {
+        val saved = synchronized(pendingLock) {
+            val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+            var foundJob = false
+            val updated = JSONArray()
+            for (i in 0 until jobs.length()) {
+                val item = jobs.optJSONObject(i) ?: continue
+                if (item.optString("id") == jobId) {
+                    item.put("needsReview", true)
+                    foundJob = true
+                }
+                updated.put(item)
+            }
+            foundJob && pendingPrefs.edit().putString("jobs", updated.toString()).commit()
+        }
+        refreshPendingCounts()
+        return saved
+    }
+
+    fun clearReviewJobs(kitchen: Boolean) {
+        worker.execute {
+            val saved = synchronized(pendingLock) {
+                val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
+                val remaining = JSONArray()
+                for (i in 0 until jobs.length()) {
+                    val item = jobs.optJSONObject(i) ?: continue
+                    if (item.optBoolean("kitchen") != kitchen || !item.optBoolean("needsReview", false)) {
+                        remaining.put(item)
+                    }
+                }
+                pendingPrefs.edit().putString("jobs", remaining.toString()).commit()
+            }
+            refreshPendingCounts()
+            report(if (saved) "Reviewed print jobs cleared" else "Could not clear reviewed print jobs", !saved)
         }
     }
 
@@ -402,6 +453,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     (0 until jobs.length()).firstNotNullOfOrNull { i ->
                         runCatching { jobs.getJSONObject(i) }.getOrNull()?.takeIf {
                             it.optBoolean("kitchen") == kitchen &&
+                                !it.optBoolean("needsReview", false) &&
                                 (it.optString("address").isBlank() || it.optString("address") == targetAddress)
                         }
                     }
@@ -409,14 +461,17 @@ class PrinterManager(private val context: Context, private val store: Store) {
                 val socket = if (kitchen) kitchenSocket else customerSocket
                 if (socket == null || !socket.isConnected) break
                 var usedSocket: BluetoothSocket? = null
+                var writeAttempted = false
                 try {
                     val payload = Base64.decode(job.getString("payload"), Base64.DEFAULT)
                     synchronized(socketLock) {
                         val active = if (kitchen) kitchenSocket else customerSocket
                         if (active == null || !active.isConnected) throw IOException("Printer connection was lost")
                         usedSocket = active
-                        active.outputStream.write(payload)
-                        active.outputStream.flush()
+                        val output = active.outputStream
+                        writeAttempted = true
+                        output.write(payload)
+                        output.flush()
                     }
                     val removed = synchronized(pendingLock) {
                         val jobs = runCatching { JSONArray(pendingPrefs.getString("jobs", "[]") ?: "[]") }.getOrDefault(JSONArray())
@@ -435,7 +490,16 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     report(if (kitchen) "Queued kitchen ticket sent to printer" else "Queued customer receipt sent to printer")
                 } catch (e: Exception) {
                     invalidateSocket(usedSocket, kitchen)
-                    report("Queued print may be partial. Job retained; check paper before retrying.", true)
+                    if (writeAttempted) {
+                        val paused = markPendingForReview(job.optString("id"))
+                        report(
+                            if (paused) "Queued print may be partial and is paused. Check paper; use PRINT SLIP or RE-PRINT if missing."
+                            else "Queued print may be partial and could not be paused. Check paper before reconnecting or retrying.",
+                            true
+                        )
+                    } else {
+                        report("Queued print was not sent; job retained for the next reconnect.", true)
+                    }
                     break
                 }
             }
