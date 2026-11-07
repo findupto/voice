@@ -172,6 +172,22 @@ class PrinterManager(private val context: Context, private val store: Store) {
 
     fun device(address: String) = devices.firstOrNull { it.address == address }
 
+    private fun invalidateSocket(failed: BluetoothSocket?, kitchen: Boolean) {
+        synchronized(socketLock) {
+            if (failed == null) {
+                if (kitchen) kitchenSocket = null else customerSocket = null
+            } else {
+                if (customerSocket === failed) customerSocket = null
+                if (kitchenSocket === failed) kitchenSocket = null
+                runCatching { failed.close() }
+            }
+        }
+        main.post {
+            customerConnected = customerSocket?.isConnected == true
+            kitchenConnected = kitchenSocket?.isConnected == true
+        }
+    }
+
     private fun connectSocket(
         target: BluetoothDevice,
         current: () -> BluetoothSocket?,
@@ -294,10 +310,12 @@ class PrinterManager(private val context: Context, private val store: Store) {
         printing = true
         report("Queued $label…")
         worker.execute {
+            var usedSocket: BluetoothSocket? = null
             try {
                 synchronized(socketLock) {
                     val active = if (kitchen) kitchenSocket else customerSocket
                     if (active == null || !active.isConnected) throw IOException("Printer connection was lost")
+                    usedSocket = active
                     val output = active.outputStream
                     var offset = 0
                     while (offset < payload.size) {
@@ -314,14 +332,10 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     lastError = ""
                 }
             } catch (e: Exception) {
-                synchronized(socketLock) {
-                    if (kitchen) { runCatching { kitchenSocket?.close() }; kitchenSocket = null }
-                    else { runCatching { customerSocket?.close() }; customerSocket = null }
-                }
+                invalidateSocket(usedSocket, kitchen)
                 main.post {
                     printing = pendingPrints.decrementAndGet() > 0
-                    if (kitchen) kitchenConnected = false else customerConnected = false
-                    report("Print failed: ${e.message ?: "printer connection lost"}. Reconnect and retry.", true)
+                    report("Print failed and may be partial. Check the paper before re-printing to avoid duplicates.", true)
                 }
             }
         }
@@ -351,11 +365,13 @@ class PrinterManager(private val context: Context, private val store: Store) {
                 } ?: break
                 val socket = if (kitchen) kitchenSocket else customerSocket
                 if (socket == null || !socket.isConnected) break
+                var usedSocket: BluetoothSocket? = null
                 try {
                     val payload = Base64.decode(job.getString("payload"), Base64.DEFAULT)
                     synchronized(socketLock) {
                         val active = if (kitchen) kitchenSocket else customerSocket
                         if (active == null || !active.isConnected) throw IOException("Printer connection was lost")
+                        usedSocket = active
                         active.outputStream.write(payload)
                         active.outputStream.flush()
                     }
@@ -370,11 +386,7 @@ class PrinterManager(private val context: Context, private val store: Store) {
                     }
                     report(if (kitchen) "Queued kitchen ticket printed" else "Queued customer receipt printed")
                 } catch (e: Exception) {
-                    synchronized(socketLock) {
-                        if (kitchen) { runCatching { kitchenSocket?.close() }; kitchenSocket = null }
-                        else { runCatching { customerSocket?.close() }; customerSocket = null }
-                    }
-                    main.post { if (kitchen) kitchenConnected = false else customerConnected = false }
+                    invalidateSocket(usedSocket, kitchen)
                     report("Queued print failed: ${e.message ?: "printer connection lost"}. Job retained for retry.", true)
                     break
                 }

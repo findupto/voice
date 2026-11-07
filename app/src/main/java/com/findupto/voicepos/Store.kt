@@ -168,7 +168,7 @@ class Store(private val context:Context){
  private fun allDues()=p.getString("dues","")!!.lines().filter{it.isNotBlank()}.mapNotNull{runCatching{val a=it.split("~");DueAccount(a[0].toLong(),a[1].toLong(),dec(a[2]),dec(a[3]),a[4].toDouble(),a[5].toDouble(),a[6].toLong())}.getOrNull()}
  fun dues()=allDues().filter{it.balance>0.005};private fun saveDues(xs:List<DueAccount>)=p.edit().putString("dues",xs.joinToString("\n"){"${it.id}~${it.saleId}~${enc(it.customerName)}~${enc(it.customerPhone)}~${it.total}~${it.paid}~${it.createdAt}"}).apply();private fun addDue(x:DueAccount)=saveDues(allDues()+x);fun addCustomerDue(name:String,phone:String,total:Double):Boolean{if(name.isBlank()||total<=0.0)return false;val id=System.currentTimeMillis();saveDues(allDues()+DueAccount(id,id,name.trim(),phone.trim(),total,0.0,id));return true};fun removeDue(id:Long){saveDues(allDues().filterNot{it.id==id})};@Synchronized fun recordPayment(dueId:Long,amount:Double,method:String,shiftId:Long):Boolean{
   val d=dues().firstOrNull{it.id==dueId}?:return false
-  if(!amount.isFinite()||amount<=0.0||method !in setOf("CASH","BANK","CARD"))return false
+  if(!amount.isFinite()||amount<=0.0||method !in setOf("CASH","CARD","EASYPAISA","JAZZCASH","BANK","RAAST","OTHER"))return false
   val pay=MoneyMath.round(amount.coerceAtMost(d.balance),profile().currencyCode)
   if(pay<=0.0)return false
   val now=System.currentTimeMillis()
