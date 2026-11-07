@@ -34,6 +34,12 @@ class MoneyMathTest {
         assertEquals(-50.0, SaleItem(CART_DISCOUNT_PREFIX, 1, -50.0).total, 0.000001)
     }
 
+    @Test fun formatsAmountsUsingCurrencyPrecision() {
+        assertEquals("10.13", MoneyMath.format(10.125, "PKR"))
+        assertEquals("10", MoneyMath.format(10.49, "JPY"))
+        assertEquals("10.125", MoneyMath.format(10.1246, "KWD"))
+    }
+
     @Test fun rejectsNonFiniteAmounts() {
         assertThrows(IllegalArgumentException::class.java) {
             MoneyMath.round(Double.NaN, "PKR")

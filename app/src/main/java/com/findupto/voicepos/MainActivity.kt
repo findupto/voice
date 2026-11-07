@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
         StoreMigration.migrate(this)
         StaffDefaults.seed(this)
         store=Store(this)
+        runCatching { InventoryStore(this).reconcileSaleConsumptions(store.sales().map { it.id }.toSet()) }
         PosBackgroundSync.schedule(this)
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else startOrderAlerts()
         printer=PrinterManager(this,store)

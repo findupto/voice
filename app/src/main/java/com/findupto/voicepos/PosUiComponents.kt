@@ -208,6 +208,7 @@ fun KitchenQueue(
     queue: List<PendingSale>,
     profile: CompanyProfile,
     printer: PrinterManager,
+    paperWidthMm: Int = 58,
     pay: (PendingSale) -> Unit,
     edit: (PendingSale) -> Unit,
     kitchenAction: (PendingSale, String, String) -> Unit
@@ -245,7 +246,7 @@ fun KitchenQueue(
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { shareCustomerQuotation(context, order, profile) }) { Text("SHARE CUSTOMER QUOTE") }
                             OutlinedButton(onClick = { shareText(context, "Share kitchen slip", kitchenShareText(order, profile)) }) { Text("SHARE KITCHEN SLIP") }
-                            OutlinedButton(onClick = { printer.printKitchen(kitchenReceipt(order, profile, ReceiptTheme.CLASSIC)) }) { Text("PRINT SLIP") }
+                            OutlinedButton(onClick = { printer.printKitchen(kitchenReceipt(order, profile, ReceiptTheme.CLASSIC, paperWidthMm)) }) { Text("PRINT SLIP") }
                         }
                     }
                 }
@@ -255,10 +256,10 @@ fun KitchenQueue(
 }
 @Composable fun EditDialog(order:PendingSale,save:(PendingSale)->Unit,close:()->Unit){var items by remember{mutableStateOf(order.items)};AlertDialog(onDismissRequest=close,title={Text("Edit Order")},text={Column{items.forEach{item->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("${item.qty} × ${item.name}",Modifier.weight(1f));IconButton(onClick={items=items.map{x->if(x==item)x.copy(qty=x.qty-1)else x}.filter{it.qty>0}}){Icon(Icons.Default.Remove,null)}}}}},confirmButton={TextButton(onClick={save(order.copy(items=items))}){Text("SAVE")}},dismissButton={TextButton(onClick=close){Text("CLOSE")}})}
 @Composable fun SalesPage(sales:List<Sale>,open:(Sale)->Unit){Column(Modifier.fillMaxSize().padding(16.dp)){Text("Sales",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);LazyColumn{items(sales.reversed()){sale->Card(Modifier.fillMaxWidth().padding(vertical=4.dp).clickable{open(sale)}){Row(Modifier.padding(12.dp)){Column(Modifier.weight(1f)){Text("Receipt #${sale.id} • ${sale.orderType.replace('_',' ')}",fontWeight=FontWeight.Bold);if(sale.customerName.isNotBlank()||sale.customerPhone.isNotBlank())Text(listOf(sale.customerName,sale.customerPhone).filter(String::isNotBlank).joinToString(" • "));if(sale.customerAddress.isNotBlank())Text(sale.customerAddress,style=MaterialTheme.typography.bodySmall);Text(date(sale.time))};Text(money(sale.total))}}}}}}
-@Composable fun SaleDetailDialog(sale:Sale,profile:CompanyProfile,printer:PrinterManager,theme:ReceiptTheme,shiftPerson:String="",close:()->Unit){
+@Composable fun SaleDetailDialog(sale:Sale,profile:CompanyProfile,printer:PrinterManager,theme:ReceiptTheme,shiftPerson:String="",paperWidthMm:Int=58,close:()->Unit){
 val context=LocalContext.current
 AlertDialog(onDismissRequest=close,title={Text("Receipt #${sale.id}")},text={Column(Modifier.verticalScroll(rememberScrollState())){Text(sale.orderType.replace('_',' '),fontWeight=FontWeight.Bold);if(sale.customerName.isNotBlank()||sale.customerPhone.isNotBlank())Text("Customer: ${listOf(sale.customerName,sale.customerPhone).filter(String::isNotBlank).joinToString(" • ")}",fontWeight=FontWeight.Bold);if(sale.customerAddress.isNotBlank())Text("Address: ${sale.customerAddress}");sale.items.forEach{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("${it.qty} × ${it.name}");Text(money(it.total))}};HorizontalDivider();Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("TOTAL",fontWeight=FontWeight.Bold);Text(money(sale.total),fontWeight=FontWeight.Bold)}}},
-confirmButton={Row{TextButton(onClick={shareText(context,"Share customer receipt",customerShareText(sale,profile))}){Text("SHARE")};TextButton(onClick={printer.printCustomer(customerReceipt(sale,profile,theme,shiftPerson))}){Text("RE-PRINT")}}},
+confirmButton={Row{TextButton(onClick={shareText(context,"Share customer receipt",customerShareText(sale,profile))}){Text("SHARE")};TextButton(onClick={printer.printCustomer(customerReceipt(sale,profile,theme,shiftPerson,paperWidthMm))}){Text("RE-PRINT")}}},
 dismissButton={TextButton(onClick=close){Text("CLOSE")}})
 }
 @Composable fun CustomerDetailsDialog(done:(String,String,String,String)->Unit,close:()->Unit){var n by remember{mutableStateOf("")};var p by remember{mutableStateOf("")};var a by remember{mutableStateOf("")};var type by remember{mutableStateOf("DINE_IN")};AlertDialog(onDismissRequest=close,title={Text("Customer & Order")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){Text("Order Type",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("DINE_IN","TAKEAWAY","DELIVERY").forEach{x->FilterChip(selected=type==x,onClick={type=x},label={Text(x.replace('_',' '))})}};OutlinedTextField(value=n,onValueChange={n=it},label={Text("Customer Name")},singleLine=true);OutlinedTextField(value=p,onValueChange={p=it},label={Text("Phone")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Phone),singleLine=true);if(type=="DELIVERY")OutlinedTextField(value=a,onValueChange={a=it},label={Text("Delivery Address")},minLines=2)}},confirmButton={TextButton(onClick={done(n,p,type,a)}){Text("PRINT KITCHEN")}},dismissButton={TextButton(onClick=close){Text("SKIP")}})}

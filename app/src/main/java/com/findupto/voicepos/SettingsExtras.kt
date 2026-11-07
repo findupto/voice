@@ -17,11 +17,18 @@ import androidx.compose.ui.unit.dp
 
 @SuppressLint("MissingPermission")
 @Composable fun PrinterSettingsDialog(store:Store,printer:PrinterManager,close:()->Unit){
+    var paperWidth by remember(store) { mutableIntStateOf(store.receiptPaperWidthMm()) }
     AlertDialog(
         onDismissRequest=close,
         title={Text("Printer Manager")},
         text={
             Column(Modifier.fillMaxWidth().heightIn(max=620.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+                Text("RECEIPT PAPER WIDTH",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    FilterChip(selected=paperWidth==58,onClick={paperWidth=58;store.setReceiptPaperWidthMm(58)},label={Text("58 mm")})
+                    FilterChip(selected=paperWidth==80,onClick={paperWidth=80;store.setReceiptPaperWidthMm(80)},label={Text("80 mm")})
+                }
+                Text(if(paperWidth==58)"58 mm layout • 32 character columns" else "80 mm layout • 48 character columns",style=MaterialTheme.typography.bodySmall)
                 Text("CUSTOMER RECEIPT PRINTER",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)
                 Text(if(printer.customerConnected)"Connected ✓" else "Not connected",style=MaterialTheme.typography.bodySmall)
                 Text("KITCHEN PRINTER",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)
