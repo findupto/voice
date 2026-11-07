@@ -130,6 +130,12 @@ class PrinterManager(private val context: Context, private val store: Store) {
         if (kitchen.isNotBlank() && kitchen != customer) device(kitchen)?.let { connectKitchen(it) }
     }
 
+    /** Re-run after Bluetooth permissions are granted or the app returns to the foreground. */
+    fun reconnectSavedPrinters() {
+        refresh()
+        if (hasConnectPermission()) reconnectSaved()
+    }
+
     fun discover() {
         if (adapter == null) {
             report("This device has no Bluetooth adapter", true)
@@ -215,6 +221,13 @@ class PrinterManager(private val context: Context, private val store: Store) {
             var connected: BluetoothSocket? = null
             try {
                 if (hasScanPermission() && adapter?.isDiscovering == true) adapter.cancelDiscovery()
+                val existing = current()
+                if (existing != null && existing.isConnected &&
+                    runCatching { existing.remoteDevice.address == target.address }.getOrDefault(false)) {
+                    report("Already connected: ${target.name.orEmpty().ifBlank { target.address }}")
+                    main.post { onConnected(true) }
+                    return@execute
+                }
                 val shared = other()
                 if (shared != null && shared.isConnected && (otherAddress() == target.address ||
                     runCatching { shared.remoteDevice.address == target.address }.getOrDefault(false))) {
