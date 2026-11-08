@@ -151,6 +151,18 @@ object LocalNetworkSync {
    }
    check(prefs.edit().putString("offline_order_queue",remaining.toString()).commit()){"Could not persist offline queue progress"}
   }
+  // Replay locally saved pickup, served and delivery transitions after their orders exist on the owner device.
+  val store=Store(context)
+  val updates=store.offlineDeliveryUpdates()
+  for(i in updates.length()-1 downTo 0){
+   val item=updates.optJSONObject(i)?:continue
+   val id=item.optLong("id")
+   val status=item.optString("status")
+   if(id>0L&&status.isNotBlank())runCatching{
+    request(ip,token,"/orders/status","POST",JSONObject().put("id",id).put("status",status).toString())
+    store.removeOfflineDeliveryUpdate(i)
+   }
+  }
   return sent
  }
  fun pullMessages(ip:String,token:String):JSONArray=JSONArray(request(ip,token,"/messages"))
