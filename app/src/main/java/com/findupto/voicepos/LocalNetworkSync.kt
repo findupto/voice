@@ -163,6 +163,17 @@ object LocalNetworkSync {
     store.removeOfflineDeliveryUpdate(i)
    }
   }
+  val kitchenUpdates=store.offlineKitchenUpdates()
+  for(i in kitchenUpdates.length()-1 downTo 0){
+   val item=kitchenUpdates.optJSONObject(i)?:continue
+   val id=item.optLong("id")
+   val station=item.optString("station")
+   val status=item.optString("status")
+   if(id>0L&&station.isNotBlank()&&status.isNotBlank())runCatching{
+    request(ip,token,"/orders/kitchen","POST",JSONObject().put("id",id).put("station",station).put("status",status).toString())
+    store.removeOfflineKitchenUpdate(i)
+   }
+  }
   return sent
  }
  fun pullMessages(ip:String,token:String):JSONArray=JSONArray(request(ip,token,"/messages"))
