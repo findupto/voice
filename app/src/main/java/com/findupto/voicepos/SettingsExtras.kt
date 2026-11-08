@@ -1,6 +1,8 @@
 package com.findupto.voicepos
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +19,7 @@ import androidx.compose.ui.unit.dp
 
 @SuppressLint("MissingPermission")
 @Composable fun PrinterSettingsDialog(store:Store,printer:PrinterManager,close:()->Unit){
+    val context=androidx.compose.ui.platform.LocalContext.current
     var paperWidth by remember(store) { mutableIntStateOf(store.receiptPaperWidthMm()) }
     AlertDialog(
         onDismissRequest=close,
@@ -45,7 +48,8 @@ import androidx.compose.ui.unit.dp
                             color=if(printer.lastError.isNotBlank())MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                     }
                 }
-                Text("Pair printers in Android Bluetooth settings first. Select a printer below for either role.",style=MaterialTheme.typography.bodySmall)
+                Text("First-time setup: pair once, then choose the printer below. Reconnect is automatic when the printer is available.",style=MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick={runCatching{context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))}},Modifier.fillMaxWidth()){Icon(Icons.Default.Bluetooth,null);Spacer(Modifier.width(8.dp));Text("PAIR / OPEN BLUETOOTH SETTINGS")}
                 LazyColumn(Modifier.heightIn(max=250.dp)){
                     items(printer.devices){d->
                         val name=runCatching{d.name}.getOrNull().orEmpty().ifBlank{"Bluetooth printer"}
