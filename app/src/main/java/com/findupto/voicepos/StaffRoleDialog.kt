@@ -26,6 +26,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  var role by remember{mutableStateOf("WAITER")}
  var mode by remember{mutableStateOf("SIGN_IN")}
  var message by remember{mutableStateOf("Enter your staff name and PIN. Ask the owner to create your account if you do not have one.")}
+ var showConnectionSettings by remember{mutableStateOf(prefs.getString("owner_ip","").isNullOrBlank())}
  var busy by remember{mutableStateOf(false)}
  val session=prefs.getString("staff_session","")?: ""
  val currentRole=store.staffRole()
@@ -40,8 +41,12 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  }
  AlertDialog(onDismissRequest=onClose,title={Text("STAFF ACCESS",fontWeight=FontWeight.Bold)},
   text={Column(verticalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.fillMaxWidth()){
-   OutlinedTextField(ip,{ip=it.trim();prefs.edit().putString("owner_ip",it.trim()).apply()},label={Text("Owner phone address")},placeholder={Text(if(LocalNetworkSync.isRunning())"127.0.0.1 (this phone)" else "192.168.1.10:8765")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   OutlinedButton(enabled=!busy&&ip.isNotBlank(),onClick={runTask({LocalNetworkSync.testConnection(ip);"Owner phone reached successfully. Server is responding."})},modifier=Modifier.fillMaxWidth()){Text("TEST OWNER CONNECTION")}
+   if(showConnectionSettings){
+    OutlinedTextField(ip,{ip=it.trim();prefs.edit().putString("owner_ip",it.trim()).apply()},label={Text("Owner phone address")},placeholder={Text(if(LocalNetworkSync.isRunning())"127.0.0.1 (this phone)" else "192.168.1.10:8765")},singleLine=true,modifier=Modifier.fillMaxWidth())
+    OutlinedButton(enabled=!busy&&ip.isNotBlank(),onClick={runTask({LocalNetworkSync.testConnection(ip);"Owner phone reached successfully. Server is responding."})},modifier=Modifier.fillMaxWidth()){Text("TEST OWNER CONNECTION")}
+   }else{
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Owner device paired ✓",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary);TextButton(onClick={showConnectionSettings=true}){Text("CHANGE")}}
+   }
    if(mode=="SIGN_IN"){
     OutlinedTextField(name,{name=it},label={Text("Your staff name")},singleLine=true,modifier=Modifier.fillMaxWidth())
     OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("Your 4–8 digit PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
