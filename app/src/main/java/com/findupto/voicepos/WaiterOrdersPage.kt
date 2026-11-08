@@ -21,7 +21,8 @@ fun WaiterOrdersPage(
     openSale: (Sale) -> Unit
 ) {
     val name = store.staffName()
-    val myPending = pending.filter { it.waiterName.equals(name, true) || (it.waiterName.isBlank() && it.shiftPerson.equals(name, true)) }
+    val role = store.staffRole()
+    val myPending = pending.filter { role in setOf("COUNTER", "OWNER", "ADMIN") || it.waiterName.equals(name, true) || (it.waiterName.isBlank() && it.shiftPerson.equals(name, true)) }
         .sortedByDescending { it.time }
     val myShiftIds = store.shifts().filter { it.person.equals(name, true) }.map { it.id }.toSet()
     val history = sales.filter { it.shiftId in myShiftIds }.sortedByDescending { it.time }
