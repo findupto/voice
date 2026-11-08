@@ -80,15 +80,17 @@ class Store(private val context:Context){
    "NEW"->setOf("ACCEPTED","PREPARING")
    "ACCEPTED"->setOf("PREPARING")
    "PREPARING"->setOf("READY")
-   "READY"->setOf("SERVED","OUT_FOR_DELIVERY","BILLED")
+   "READY"->setOf("SERVED","PICKED_UP","OUT_FOR_DELIVERY","BILLED")
    "OUT_FOR_DELIVERY"->setOf("DELIVERED","BILLED")
    "SERVED"->setOf("BILLED")
+   "PICKED_UP"->setOf("BILLED")
    "DELIVERED"->setOf("BILLED")
    else->emptySet()
   }
   if(status !in allowed)return false
   if((status=="PREPARING"||status=="READY")&&role!="CHEF"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="SERVED"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="PICKED_UP"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status in setOf("OUT_FOR_DELIVERY","DELIVERED")&&role!="RIDER"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="BILLED"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
