@@ -1,5 +1,8 @@
 package com.findupto.voicepos
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +33,7 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  var busy by remember{mutableStateOf(false)}
  val session=prefs.getString("staff_session","")?: ""
  val currentRole=store.staffRole()
+ val pairScanner=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){result->if(result.resultCode==android.app.Activity.RESULT_OK){val raw=result.data?.getStringExtra(LiveQrScannerActivity.EXTRA_QR_CODE).orEmpty();val parts=raw.split("|");if(parts.size==2&&parts[0]=="VOICEPOS-PAIR"&&parts[1].isNotBlank()){ip=parts[1];prefs.edit().putString("owner_ip",ip).apply();showConnectionSettings=false;message="Paired with main POS device. You can now sign in."; }else message="Invalid pairing QR. Scan the QR shown on the main POS device."}}
  fun runTask(task:()->String,onSuccess:()->Unit={}){
   if(busy)return
   busy=true
@@ -42,10 +46,12 @@ fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  AlertDialog(onDismissRequest=onClose,title={Text("STAFF ACCESS",fontWeight=FontWeight.Bold)},
   text={Column(verticalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.fillMaxWidth()){
    if(showConnectionSettings){
-    OutlinedTextField(ip,{ip=it.trim();prefs.edit().putString("owner_ip",it.trim()).apply()},label={Text("Owner phone address")},placeholder={Text(if(LocalNetworkSync.isRunning())"127.0.0.1 (this phone)" else "192.168.1.10:8765")},singleLine=true,modifier=Modifier.fillMaxWidth())
-    OutlinedButton(enabled=!busy&&ip.isNotBlank(),onClick={runTask({LocalNetworkSync.testConnection(ip);"Owner phone reached successfully. Server is responding."})},modifier=Modifier.fillMaxWidth()){Text("TEST OWNER CONNECTION")}
+    OutlinedButton(enabled=!busy,onClick={pairScanner.launch(Intent(context,LiveQrScannerActivity::class.java))},modifier=Modifier.fillMaxWidth()){Text("SCAN MAIN POS QR — PAIR AUTOMATICALLY")}
+    OutlinedTextField(ip,{ip=it.trim();prefs.edit().putString("owner_ip",it.trim()).apply()},label={Text("Owner phone address (optional)")},placeholder={Text(if(LocalNetworkSync.isRunning())"127.0.0.1 (this phone)" else "192.168.1.10:8765")},singleLine=true,modifier=Modifier.fillMaxWidth())
+    OutlinedButton(enabled=!busy&&ip.isNotBlank(),onClick={runTask({LocalNetworkSync.testConnection(ip);"Owner phone reached successfully. Server is responding."})},modifier=Modifier.fillMaxWidth()){Text("TEST CONNECTION")}
    }else{
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Owner device paired ✓",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary);TextButton(onClick={showConnectionSettings=true}){Text("CHANGE")}}
+    OutlinedButton(enabled=!busy,onClick={pairScanner.launch(Intent(context,LiveQrScannerActivity::class.java))},modifier=Modifier.fillMaxWidth()){Text("SCAN A DIFFERENT MAIN DEVICE")}
    }
    if(mode=="SIGN_IN"){
     OutlinedTextField(name,{name=it},label={Text("Your staff name")},singleLine=true,modifier=Modifier.fillMaxWidth())
