@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PremiumQuickSale(
     cart: List<SaleItem>, menu: List<MenuItem>, addProduct: (MenuItem) -> Unit, send: () -> Unit, clear: () -> Unit, manual: () -> Unit, discount: () -> Unit,
-    changeQty: (SaleItem, Int) -> Unit, hold: () -> Unit
+    changeQty: (SaleItem, Int) -> Unit, hold: () -> Unit, quickBill: () -> Unit
 ) {
     val products = cart.filterNot { it.name.startsWith(CART_DISCOUNT_PREFIX) }
     val discountAmount = cartDiscount(cart)
@@ -114,7 +114,8 @@ fun PremiumQuickSale(
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("Subtotal"); Text(money(subtotal)) }
                     if (discountAmount > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Discount", color = MaterialTheme.colorScheme.secondary); Text("- ${money(discountAmount)}", color = MaterialTheme.colorScheme.secondary) }
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("TOTAL", fontWeight = FontWeight.Bold); Text(money(total), fontWeight = FontWeight.Bold) }
-                    Button(onClick = send, Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("CUSTOMER / ORDER TYPE / PRINT") }
+                    Button(onClick = quickBill, Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("QUICK BILL — NO LOGIN / NO SHIFT SETUP") }
+                    OutlinedButton(onClick = send, Modifier.fillMaxWidth()) { Text("CUSTOMER / DINE-IN / TAKEAWAY / DELIVERY") }
                 }
             }
         }
