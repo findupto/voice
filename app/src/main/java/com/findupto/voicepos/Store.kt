@@ -91,7 +91,8 @@ class Store(private val context:Context){
   if((status=="PREPARING"||status=="READY")&&role!="CHEF"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="SERVED"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="PICKED_UP"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
-  if(status in setOf("OUT_FOR_DELIVERY","DELIVERED")&&role!="RIDER"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="OUT_FOR_DELIVERY"&&role!="RIDER"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
+  if(status=="DELIVERED"&&role!="RIDER"&&role!="WAITER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="ACCEPTED"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
   if(status=="BILLED"&&role!="WAITER"&&role!="COUNTER"&&role!="OWNER"&&role!="ADMIN")return false
   val now=System.currentTimeMillis()
