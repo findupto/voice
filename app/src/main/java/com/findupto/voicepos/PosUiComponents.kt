@@ -240,7 +240,7 @@ fun KitchenQueue(
                                 if (state == "PREPARING") Button(onClick = { kitchenAction(order, station, "READY") }) { Text("MARK READY") }
                             }
                         }
-                        if (order.status == "READY") Text("ALL ITEMS READY — waiter has been notified", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        if (order.status == "READY") Text(when (order.orderType) { "DINE_IN" -> "READY — waiter can serve this table and bill it"; "TAKEAWAY" -> "READY — counter can mark PICKED UP and bill it"; "DELIVERY" -> "READY — rider can dispatch and mark DELIVERED"; else -> "ALL ITEMS READY — proceed to checkout" }, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (order.specialInstructions.isNotBlank()) Text("Note: ${order.specialInstructions}")
                         Text("Waiter: ${order.waiterName.ifBlank { order.shiftPerson }} • Chef: ${order.chefName.ifBlank { "Unassigned" }}", style = MaterialTheme.typography.bodySmall)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
