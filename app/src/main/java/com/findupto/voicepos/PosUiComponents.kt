@@ -211,7 +211,8 @@ fun KitchenQueue(
     paperWidthMm: Int = 58,
     pay: (PendingSale) -> Unit,
     edit: (PendingSale) -> Unit,
-    kitchenAction: (PendingSale, String, String) -> Unit
+    kitchenAction: (PendingSale, String, String) -> Unit,
+    canBill: Boolean = false
 ) {
     val context = LocalContext.current
     val active = queue.filter { it.status !in setOf("SERVED", "DELIVERED") }
@@ -241,6 +242,7 @@ fun KitchenQueue(
                             }
                         }
                         if (order.status == "READY") Text(when (order.orderType) { "DINE_IN" -> "READY — waiter can serve this table and bill it"; "TAKEAWAY" -> "READY — counter can mark PICKED UP and bill it"; "DELIVERY" -> "READY — rider can dispatch and mark DELIVERED"; else -> "ALL ITEMS READY — proceed to checkout" }, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        if (order.status == "READY" && canBill) Button(onClick = { pay(order) }, modifier = Modifier.fillMaxWidth()) { Text("OPEN BILL / PRINT") }
                         if (order.specialInstructions.isNotBlank()) Text("Note: ${order.specialInstructions}")
                         Text("Waiter: ${order.waiterName.ifBlank { order.shiftPerson }} • Chef: ${order.chefName.ifBlank { "Unassigned" }}", style = MaterialTheme.typography.bodySmall)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
