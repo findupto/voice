@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
 fun StaffRoleDialog(store:Store,onClose:()->Unit,onSaved:()->Unit){
  val context=LocalContext.current
