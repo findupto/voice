@@ -40,9 +40,11 @@ fun WaiterOrdersPage(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { edit(order) }) { Text("ADD / MODIFY") }
                             Button(onClick = { bill(order) }, enabled = order.status !in setOf("CANCELLED")) { Text("BILL / PRINT") }
-                            if (order.status == "READY" && order.orderType != "DELIVERY") OutlinedButton(onClick = { advance(order, "SERVED") }) { Text("MARK SERVED") }
+                            if (order.status == "READY" && order.orderType == "DINE_IN") OutlinedButton(onClick = { advance(order, "SERVED") }) { Text("MARK SERVED") }
+                            if (order.status == "READY" && order.orderType == "TAKEAWAY") OutlinedButton(onClick = { advance(order, "PICKED_UP") }) { Text("MARK PICKED UP") }
                             if (order.status == "READY" && order.orderType == "DELIVERY") OutlinedButton(onClick = { advance(order, "OUT_FOR_DELIVERY") }) { Text("DISPATCH") }
-                            if (order.status == "OUT_FOR_DELIVERY") OutlinedButton(onClick = { advance(order, "DELIVERED") }) { Text("DELIVERED") }
+                            if (order.status == "OUT_FOR_DELIVERY") OutlinedButton(onClick = { advance(order, "DELIVERED") }) { Text("MARK DELIVERED") }
+                            if (order.status in setOf("SERVED", "PICKED_UP", "DELIVERED")) Text("READY TO BILL", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
